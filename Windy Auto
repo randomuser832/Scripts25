@@ -1,0 +1,158 @@
+local REQUIRED_KEY = "G7sP4tY9RmQ2XvB6" 
+
+local KEY_URL = "https://raw.githubusercontent.com/randomuser832/uilibpub/refs/heads/main/key" 
+
+local function B(x)local y={}for i=1,#x do y[i]=string.byte(x,i)end return y end
+local function D(y)local x="" for i,v in ipairs(y) do x=x..string.char(v) end return x end
+
+local S = {
+    B("Players"),
+    B("StarterGui"),
+    B("UserInputService")
+}
+
+local a,b,c=table.unpack((function()
+    local t={}
+    for _,v in pairs(S) do
+        t[#t+1] = game:GetService(D(v))
+    end
+    return t
+end)())
+
+local e=b.SetCore
+local f=a.LocalPlayer
+local g=f.Character or f.CharacterAdded:Wait()
+local h=g:WaitForChild(D(B("HumanoidRootPart")))
+
+local i=workspace[D(B("JobSystem"))]
+
+local jobs={
+    {toggle=Bishop,name=D(B("Bishop Cleaning Job"))},
+    {toggle=Discount,name=D(B("Discount Clothing Cleaning Job"))},
+    {toggle=LTD,name=D(B("LTD Gas Station Cleaning Job"))},
+    {toggle=Rons,name=D(B("Rons Gas Station Cleaning Job"))},
+}
+
+local function fetchKey()
+    local body
+    if syn and syn.request then
+        body = syn.request({Url = KEY_URL, Method = "GET"}).Body
+    elseif http and http.request then
+        body = http.request({Url = KEY_URL, Method = "GET"}).Body
+    elseif http_request then
+        body = http_request({Url = KEY_URL, Method = "GET"}).Body
+    elseif request then
+        body = request({Url = KEY_URL, Method = "GET"}).Body
+    else
+        error("No supported HTTP request function found.")
+    end
+    return body
+end
+
+local function notify(title,text,dur)
+    e(b,"SendNotification",{Title=title,Text=text,Duration=dur or 5})
+end
+
+local function validateKey()
+    local ok, res = pcall(fetchKey)
+    if not ok then
+        notify("Key Validation Failed","Failed to fetch key from server.",5)
+        return false
+    end
+    return res:find(REQUIRED_KEY, 1, true) ~= nil
+end
+
+if not validateKey() then
+    notify("Key Validation","Valid key not found. Script stopped.",5)
+    return
+end
+
+local function j(k)
+    h.CFrame=CFrame.new(k+Vector3.new(0,4,0))
+end
+
+local function l(m,n,o)
+    e(b,"SendNotification",{Title=m,Text=n,Duration=o or 5})
+end
+
+local function jobStarted(q)
+    for r=1,5 do
+        if q:FindFirstChild("CleaningSpot"..r) then
+            return true
+        end
+    end
+    return false
+end
+
+local function p(q,r,s)
+    if q then
+        local t=false
+        local u=tick()
+        while q.Enabled and s() and not t do
+            q:InputHoldBegin()
+            task.wait(.1)
+            q:InputHoldEnd()
+            if tick()-u >= .5 and q.Enabled then
+                j(r)
+                task.wait(.2)
+                u = tick()
+            else
+                t = not q.Enabled
+            end
+        end
+    end
+end
+
+local function v(w)
+    local x=true
+    c.InputBegan:Connect(function(y,z)
+        if not z and y.KeyCode==Enum.KeyCode.K then
+            x=false
+        end
+    end)
+    while x do
+        local A=false
+        for B=1,5 do
+            if not x then break end
+            local C=w:FindFirstChild("CleaningSpot"..B)
+            if C then
+                local E={}
+                for _,F in ipairs(C:GetDescendants()) do
+                    if F:IsA("ProximityPrompt") and F.Enabled then
+                        table.insert(E,F)
+                    end
+                end
+                if #E>0 then
+                    A=true
+                    local G=C.Position or C.CFrame.Position
+                    task.wait(3)
+                    j(G)
+                    task.wait(.2)
+                    for _,F in ipairs(E) do
+                        F.HoldDuration=.1
+                        p(F,G,function() return x end)
+                    end
+                    task.wait(2)
+                end
+            end
+        end
+        task.wait(A and .5 or 2)
+    end
+end
+
+for _,H in ipairs(jobs) do
+    if H.toggle then
+        local I=i:WaitForChild(H.name)
+        local J=I:FindFirstChild("JobPoint")
+        if J then
+            j(J.Position or J.CFrame.Position)
+            task.wait(.2)
+            if not jobStarted(I) then
+                l("Job Notice","Please type /applyjob in chat to start the job.",6)
+                task.wait(3)
+            end
+        end
+        v(I)
+        break
+    end
+end
