@@ -1,3 +1,9 @@
+-- TOGGLES (set only ONE to true)
+local Bishop = false
+local Discount = false
+local LTD = false
+local Rons = true
+
 local REQUIRED_KEY = "G7sP4tY9RmQ2XvB6" 
 
 local KEY_URL = "https://raw.githubusercontent.com/randomuser832/uilibpub/refs/heads/main/key" 
