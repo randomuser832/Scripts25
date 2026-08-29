@@ -145,6 +145,15 @@ local function NewElementFactory(container, onSizeChanged)
         layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(onSizeChanged)
     end
 
+    -- Every element gets an increasing LayoutOrder so rows always stack in the
+    -- order you called them in, even if Roblox ties same-order instances in a
+    -- way you don't expect.
+    local nextOrder = 0
+    local function claimOrder(inst)
+        nextOrder = nextOrder + 1
+        inst.LayoutOrder = nextOrder
+    end
+
     ------------------------------------------------------------------
     -- Square checkbox + label (matches the reference screenshot style)
     function factory.Toggle(opts)
@@ -157,6 +166,7 @@ local function NewElementFactory(container, onSizeChanged)
         row.BackgroundTransparency = 1
         row.Size = UDim2.new(1, 0, 0, 20)
         row.Parent = container
+        claimOrder(row)
 
         local box = Instance.new("Frame")
         box.Size = UDim2.new(0, 16, 0, 16)
@@ -280,6 +290,7 @@ local function NewElementFactory(container, onSizeChanged)
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.Text = opts.text or ""
         lbl.Parent = container
+        claimOrder(lbl)
 
         local api = { Instance = lbl }
         function api.SetText(t) lbl.Text = t end
@@ -306,6 +317,7 @@ local function NewElementFactory(container, onSizeChanged)
         box.Text = ""
         box.ClearTextOnFocus = false
         box.Parent = container
+        claimOrder(box)
         Round(box, 6)
         Stroke(box)
         Pad(box, 10)
@@ -338,6 +350,7 @@ local function NewElementFactory(container, onSizeChanged)
         btn.TextColor3 = Theme.SubText
         btn.Text = opts.text or "Button"
         btn.Parent = container
+        claimOrder(btn)
         Round(btn, 6)
         Stroke(btn)
 
@@ -367,6 +380,7 @@ local function NewElementFactory(container, onSizeChanged)
         holder.BackgroundTransparency = 1
         holder.Size = UDim2.new(1, 0, 0, 36)
         holder.Parent = container
+        claimOrder(holder)
 
         local topRow = Instance.new("Frame")
         topRow.BackgroundTransparency = 1
@@ -481,6 +495,7 @@ local function NewCategory(parentColumn, opts)
     card.ClipsDescendants = true
     card.Parent = parentColumn
     Round(card, 8)
+    Stroke(card, Color3.new(1, 1, 1), 1, 0.9) -- faint outline so stacked cards read as separate boxes
 
     local accent = Instance.new("Frame")
     accent.BackgroundColor3 = Theme.Accent
@@ -522,17 +537,21 @@ local function NewCategory(parentColumn, opts)
     body.BackgroundTransparency = 1
     body.Position = UDim2.new(0, 16, 0, 46)
     body.Size = UDim2.new(1, -32, 0, 0)
+    -- Let Roblox drive body's real height off its UIListLayout instead of us
+    -- reading AbsoluteContentSize by hand — AutomaticSize is the value that's
+    -- guaranteed to be in sync with what's actually laid out.
+    body.AutomaticSize = Enum.AutomaticSize.Y
     body.Parent = card
 
     local function resize()
-        local content = body:FindFirstChildOfClass("UIListLayout")
-        local h = content and content.AbsoluteContentSize.Y or 0
+        local h = body.AbsoluteSize.Y
         local target = isOpen and (46 + h + 12) or 40
         Tween(card, { Size = UDim2.new(1, 0, 0, target) }, 0.15)
     end
 
     local elements = NewElementFactory(body, resize)
     for k, v in pairs(elements) do api[k] = v end
+    body:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
 
     local function setOpen(v)
         isOpen = v
@@ -724,7 +743,7 @@ function Library.new(options)
     for _, col in ipairs({ leftCol, rightCol }) do
         local l = Instance.new("UIListLayout")
         l.SortOrder = Enum.SortOrder.LayoutOrder
-        l.Padding = UDim.new(0, 12)
+        l.Padding = UDim.new(0, 16)
         l.Parent = col
     end
 
@@ -741,12 +760,38 @@ function Library.new(options)
         end
     end
 
-    -- auto-balance: new category goes into whichever column is currently shorter
+    -- Auto-balance columns using our own running height total instead of
+    -- reading AbsoluteCanvasSize at call time — that property can lag a
+    -- frame behind the Instance.new() calls we just made, which was
+    -- causing every category to pile into the same column.
+    local leftHeight, rightHeight = 0, 0
+    local categoryLayoutOrder = 0
+
     function api.new(catOptions)
-        local targetCol = (leftCol.AbsoluteCanvasSize.Y <= rightCol.AbsoluteCanvasSize.Y) and leftCol or rightCol
-        local category = NewCategory(targetCol, catOptions)
         categoryCount = categoryCount + 1
-        updateSingleCategoryLayout()
+        updateSingleCategoryLayout() -- resize/reveal the column BEFORE parenting into it
+
+        local targetCol = (leftHeight <= rightHeight) and leftCol or rightCol
+        local category = NewCategory(targetCol, catOptions)
+
+        categoryLayoutOrder = categoryLayoutOrder + 1
+        category.Instance.LayoutOrder = categoryLayoutOrder
+
+        -- Track this category's contribution to its column's total height as a
+        -- running delta, so leftHeight/rightHeight always reflect the sum of
+        -- every category in that column, not just the last one that resized.
+        local lastKnownHeight = 40
+        if targetCol == leftCol then leftHeight = leftHeight + lastKnownHeight
+        else rightHeight = rightHeight + lastKnownHeight end
+
+        category.Instance:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+            local newHeight = category.Instance.AbsoluteSize.Y
+            local delta = newHeight - lastKnownHeight
+            lastKnownHeight = newHeight
+            if targetCol == leftCol then leftHeight = leftHeight + delta
+            else rightHeight = rightHeight + delta end
+        end)
+
         return category
     end
     updateSingleCategoryLayout()
