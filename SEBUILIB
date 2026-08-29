@@ -571,6 +571,7 @@ function Library.new(options)
     glow.Parent = ScreenGui
 
     local window = Instance.new("Frame")
+    window.Active = true
     window.BackgroundColor3 = Theme.Background
     window.Size = UDim2.new(1, 0, 1, 0)
     window.ClipsDescendants = true
@@ -582,6 +583,7 @@ function Library.new(options)
     -- Header
     ------------------------------------------------------------------
     local header = Instance.new("Frame")
+    header.Active = true
     header.BackgroundColor3 = Theme.Header
     header.Size = UDim2.new(1, 0, 0, 68)
     header.Parent = window
@@ -703,7 +705,7 @@ function Library.new(options)
     leftCol.BorderSizePixel = 0
     leftCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
     leftCol.CanvasSize = UDim2.new(0, 0, 0, 0)
-    leftCol.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+    leftCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
     leftCol.ScrollBarThickness = 3
     leftCol.ScrollBarImageColor3 = Theme.Accent
     leftCol.Parent = body
@@ -714,7 +716,7 @@ function Library.new(options)
     rightCol.Position = UDim2.new(0.5, columnGap / 2, 0, 0)
     rightCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
     rightCol.CanvasSize = UDim2.new(0, 0, 0, 0)
-    rightCol.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+    rightCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
     rightCol.ScrollBarThickness = 3
     rightCol.ScrollBarImageColor3 = Theme.Accent
     rightCol.Parent = body
