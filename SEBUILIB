@@ -16,6 +16,7 @@ local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players          = game:GetService("Players")
 local CoreGui          = game:GetService("CoreGui")
+local HttpService      = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -133,7 +134,7 @@ end
 -- Element factory — populates a category's body with rows
 ------------------------------------------------------------------
 
-local function NewElementFactory(container, onSizeChanged)
+local function NewElementFactory(container, onSizeChanged, registerFlag)
     local factory = {}
 
     local layout = Instance.new("UIListLayout")
@@ -220,6 +221,10 @@ local function NewElementFactory(container, onSizeChanged)
 
         clickArea.MouseButton1Click:Connect(function() api.Set(not api.Value) end)
         render()
+
+        if opts.flag and registerFlag then
+            registerFlag(opts.flag, function() return api.Value end, function(v) api.Set(v, true) end)
+        end
 
         api.Instance = row
         function api.Destroy() row:Destroy() end
@@ -329,6 +334,10 @@ local function NewElementFactory(container, onSizeChanged)
 
         function api.Get() return box.Text end
         function api.Set(text) box.Text = text end
+
+        if opts.flag and registerFlag then
+            registerFlag(opts.flag, api.Get, api.Set)
+        end
 
         api.Instance = box
         function api.Destroy() box:Destroy() end
@@ -472,6 +481,10 @@ local function NewElementFactory(container, onSizeChanged)
             end
         end)
 
+        if opts.flag and registerFlag then
+            registerFlag(opts.flag, function() return api.Value end, function(v) api.Set(v, true) end)
+        end
+
         api.Instance = holder
         function api.Destroy() holder:Destroy() end
         return api
@@ -533,6 +546,11 @@ local function NewElementFactory(container, onSizeChanged)
         end)
 
         function api.Set(v) api.Value = v; bindBtn.Text = v end
+
+        if opts.flag and registerFlag then
+            registerFlag(opts.flag, function() return api.Value end, api.Set)
+        end
+
         api.Instance = row
         function api.Destroy() row:Destroy() end
         return api
@@ -572,10 +590,11 @@ local function NewElementFactory(container, onSizeChanged)
         chevron.AnchorPoint = Vector2.new(1, 0.5)
         chevron.Position = UDim2.new(1, -10, 0.5, 0)
         chevron.Size = UDim2.new(0, 16, 0, 16)
-        chevron.Font = Theme.Font
-        chevron.TextSize = 12
+        chevron.Font = Theme.FontBold
+        chevron.TextSize = 14
         chevron.TextColor3 = Theme.SubText
-        chevron.Text = "⌄"
+        chevron.Text = ">" -- plain ASCII, rotated — the fancy unicode chevrons render as
+        chevron.Rotation = 0 -- boxes/tofu on Roblox's default fonts, so we rotate a safe glyph instead
         chevron.Parent = head
 
         local list = Instance.new("Frame")
@@ -622,7 +641,7 @@ local function NewElementFactory(container, onSizeChanged)
                 optBtn.MouseButton1Click:Connect(function()
                     api.Set(optionText)
                     isOpen = false
-                    chevron.Text = "⌄"
+                    Tween(chevron, { Rotation = 0 }, 0.12)
                     resizeHolder()
                 end)
                 table.insert(optionButtons, optBtn)
@@ -632,11 +651,16 @@ local function NewElementFactory(container, onSizeChanged)
 
         head.MouseButton1Click:Connect(function()
             isOpen = not isOpen
-            chevron.Text = isOpen and "›" or "⌄"
+            Tween(chevron, { Rotation = isOpen and 90 or 0 }, 0.12) -- right when closed, down when open
             resizeHolder()
         end)
 
         api.SetOptions(opts.options or {})
+
+        if opts.flag and registerFlag then
+            registerFlag(opts.flag, function() return api.Value end, function(v) api.Set(v, true) end)
+        end
+
         api.Instance = holder
         function api.Destroy() holder:Destroy() end
         return api
@@ -649,7 +673,7 @@ end
 -- Category (collapsible section with a colored left accent bar)
 ------------------------------------------------------------------
 
-local function NewCategory(parentColumn, opts)
+local function NewCategory(parentColumn, opts, registerFlag)
     opts = opts or {}
     local api = {}
     local isOpen = opts.default_open ~= false
@@ -691,10 +715,11 @@ local function NewCategory(parentColumn, opts)
     chevron.AnchorPoint = Vector2.new(1, 0.5)
     chevron.Position = UDim2.new(1, -14, 0, 20) -- fixed to the header strip's vertical center, not the card's
     chevron.Size = UDim2.new(0, 16, 0, 16)
-    chevron.Font = Theme.Font
-    chevron.TextSize = 14
+    chevron.Font = Theme.FontBold
+    chevron.TextSize = 16
     chevron.TextColor3 = Theme.SubText
-    chevron.Text = isOpen and "⌄" or "›" -- down when expanded, right-pointing when collapsed
+    chevron.Text = ">" -- plain ASCII, rotated — fancy unicode chevrons render as boxes on Roblox's default fonts
+    chevron.Rotation = isOpen and 90 or 0 -- down when expanded, right-pointing when collapsed
     chevron.Parent = card
 
     local body = Instance.new("Frame")
@@ -713,13 +738,13 @@ local function NewCategory(parentColumn, opts)
         Tween(card, { Size = UDim2.new(1, 0, 0, target) }, 0.15)
     end
 
-    local elements = NewElementFactory(body, resize)
+    local elements = NewElementFactory(body, resize, registerFlag)
     for k, v in pairs(elements) do api[k] = v end
     body:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
 
     local function setOpen(v)
         isOpen = v
-        chevron.Text = isOpen and "⌄" or "›"
+        Tween(chevron, { Rotation = isOpen and 90 or 0 }, 0.15)
         resize()
     end
 
@@ -737,7 +762,7 @@ end
 -- Two-column, auto-balancing category layout — used once per tab page
 ------------------------------------------------------------------
 
-local function BuildCategoryPage(parentFrame)
+local function BuildCategoryPage(parentFrame, registerFlag)
     local pageApi = {}
 
     local columnGap = 12
@@ -795,7 +820,7 @@ local function BuildCategoryPage(parentFrame)
         updateSingleCategoryLayout() -- resize/reveal the column BEFORE parenting into it
 
         local targetCol = (leftHeight <= rightHeight) and leftCol or rightCol
-        local category = NewCategory(targetCol, catOptions)
+        local category = NewCategory(targetCol, catOptions, registerFlag)
 
         categoryLayoutOrder = categoryLayoutOrder + 1
         category.Instance.LayoutOrder = categoryLayoutOrder
@@ -834,6 +859,80 @@ function Library.new(options)
 
     local sizeX = options.width or 720
     local sizeY = options.height or 480
+
+    ------------------------------------------------------------------
+    -- Config save/load: any element created with an opts.flag registers
+    -- a getter/setter here, so SaveConfig/LoadConfig can capture or
+    -- restore the whole UI's state in one call. Uses writefile/readfile
+    -- (present in script executors) — everything is pcall-guarded so the
+    -- UI still works fine in environments that don't have them (e.g.
+    -- Roblox Studio), just without persistence.
+    ------------------------------------------------------------------
+    local flagRegistry = {}
+    local function registerFlag(flag, getter, setter)
+        if not flag then return end
+        flagRegistry[flag] = { get = getter, set = setter }
+    end
+
+    local CONFIG_FOLDER = options.configFolder or "SebsUI"
+
+    local function ensureConfigFolder()
+        pcall(function()
+            if isfolder and makefolder and not isfolder(CONFIG_FOLDER) then
+                makefolder(CONFIG_FOLDER)
+            end
+        end)
+    end
+
+    function api.SaveConfig(name)
+        if not (writefile and HttpService) or not name or name == "" then return false end
+        local data = {}
+        for flag, entry in pairs(flagRegistry) do
+            local ok, value = pcall(entry.get)
+            if ok then data[flag] = value end
+        end
+        local ok, encoded = pcall(function() return HttpService:JSONEncode(data) end)
+        if not ok then return false end
+        ensureConfigFolder()
+        local writeOk = pcall(function()
+            writefile(CONFIG_FOLDER .. "/" .. name .. ".json", encoded)
+        end)
+        return writeOk
+    end
+
+    function api.LoadConfig(name)
+        if not (readfile and HttpService) or not name or name == "" then return false end
+        local ok, content = pcall(function() return readfile(CONFIG_FOLDER .. "/" .. name .. ".json") end)
+        if not ok then return false end
+        local decodeOk, data = pcall(function() return HttpService:JSONDecode(content) end)
+        if not decodeOk or type(data) ~= "table" then return false end
+        for flag, value in pairs(data) do
+            local entry = flagRegistry[flag]
+            if entry then pcall(entry.set, value) end
+        end
+        return true
+    end
+
+    function api.DeleteConfig(name)
+        if not (delfile and isfile) or not name or name == "" then return false end
+        return pcall(function()
+            if isfile(CONFIG_FOLDER .. "/" .. name .. ".json") then
+                delfile(CONFIG_FOLDER .. "/" .. name .. ".json")
+            end
+        end)
+    end
+
+    function api.ListConfigs()
+        if not listfiles then return {} end
+        local ok, files = pcall(listfiles, CONFIG_FOLDER)
+        if not ok then return {} end
+        local names = {}
+        for _, path in ipairs(files) do
+            local name = tostring(path):match("([^/\\]+)%.json$")
+            if name then table.insert(names, name) end
+        end
+        return names
+    end
 
     -- outer glow wrapper
     local glow = Instance.new("Frame")
@@ -992,7 +1091,7 @@ function Library.new(options)
         Round(btn, 8)
 
         local id = #tabs + 1
-        local pageApi = BuildCategoryPage(page)
+        local pageApi = BuildCategoryPage(page, registerFlag)
         tabs[id] = { id = id, page = page, button = btn, pageApi = pageApi }
         btn.MouseButton1Click:Connect(function() selectTab(id) end)
 
@@ -1042,11 +1141,43 @@ function Library.new(options)
         settingsApi.ConfigDeleteEvent = Signal.new()
         settingsApi.ConfigRefreshEvent = Signal.new()
 
-        createBtn.Event:Connect(function() settingsApi.ConfigCreateEvent:Fire(nameBox.Get()) end)
-        loadBtn.Event:Connect(function() settingsApi.ConfigLoadEvent:Fire(configDropdown.Value) end)
-        saveBtn.Event:Connect(function() settingsApi.ConfigSaveEvent:Fire(configDropdown.Value) end)
-        deleteBtn.Event:Connect(function() settingsApi.ConfigDeleteEvent:Fire(configDropdown.Value) end)
-        refreshBtn.Event:Connect(function() settingsApi.ConfigRefreshEvent:Fire() end)
+        local function refreshDropdown()
+            configDropdown.SetOptions(api.ListConfigs())
+        end
+
+        -- Create + Save both write every flagged element's current value
+        -- (toggles, sliders, dropdowns, textboxes, keybinds — anything you
+        -- gave an opts.flag) to a config file. Create additionally picks up
+        -- whatever name was typed in the box and adds it to the list.
+        createBtn.Event:Connect(function()
+            local name = nameBox.Get()
+            settingsApi.ConfigCreateEvent:Fire(name)
+            if name and name ~= "" then
+                api.SaveConfig(name)
+                refreshDropdown()
+                configDropdown.Set(name)
+            end
+        end)
+        loadBtn.Event:Connect(function()
+            settingsApi.ConfigLoadEvent:Fire(configDropdown.Value)
+            if configDropdown.Value then api.LoadConfig(configDropdown.Value) end
+        end)
+        saveBtn.Event:Connect(function()
+            settingsApi.ConfigSaveEvent:Fire(configDropdown.Value)
+            if configDropdown.Value then api.SaveConfig(configDropdown.Value) end
+        end)
+        deleteBtn.Event:Connect(function()
+            settingsApi.ConfigDeleteEvent:Fire(configDropdown.Value)
+            if configDropdown.Value then
+                api.DeleteConfig(configDropdown.Value)
+                refreshDropdown()
+            end
+        end)
+        refreshBtn.Event:Connect(function()
+            settingsApi.ConfigRefreshEvent:Fire()
+            refreshDropdown()
+        end)
+        refreshDropdown() -- populate with whatever configs already exist on disk
 
         -- sensible defaults: the menu keybind actually toggles the window,
         -- and Unload actually tears the UI down — override by disconnecting
