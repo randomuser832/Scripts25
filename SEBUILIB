@@ -477,6 +477,171 @@ local function NewElementFactory(container, onSizeChanged)
         return api
     end
 
+    ------------------------------------------------------------------
+    -- A standalone "click to rebind" row (label + current key on the right).
+    -- Generic — useful for a menu-toggle keybind, an action keybind, etc.
+    function factory.Keybind(opts)
+        opts = opts or {}
+        local api = {}
+        api.Event = Signal.new() -- fires the new key name after a rebind
+        api.Value = opts.default or "None"
+
+        local row = Instance.new("Frame")
+        row.BackgroundTransparency = 1
+        row.Size = UDim2.new(1, 0, 0, 20)
+        row.Parent = container
+        claimOrder(row)
+
+        local label = Instance.new("TextLabel")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.new(1, -70, 1, 0)
+        label.Font = Theme.Font
+        label.TextSize = 14
+        label.TextColor3 = Theme.SubText
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Text = opts.text or "Keybind"
+        label.Parent = row
+
+        local bindBtn = Instance.new("TextButton")
+        bindBtn.AnchorPoint = Vector2.new(1, 0.5)
+        bindBtn.Position = UDim2.new(1, 0, 0.5, 0)
+        bindBtn.Size = UDim2.new(0, 90, 1, 0)
+        bindBtn.BackgroundTransparency = 1
+        bindBtn.Font = Theme.Font
+        bindBtn.TextSize = 13
+        bindBtn.TextColor3 = Theme.SubText
+        bindBtn.Text = api.Value
+        bindBtn.TextXAlignment = Enum.TextXAlignment.Right
+        bindBtn.Parent = row
+
+        local listening = false
+        bindBtn.MouseButton1Click:Connect(function()
+            if listening then return end
+            listening = true
+            bindBtn.Text = "..."
+            local conn
+            conn = UserInputService.InputBegan:Connect(function(input, gpe)
+                if gpe then return end
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    api.Value = input.KeyCode.Name
+                    bindBtn.Text = api.Value
+                    listening = false
+                    conn:Disconnect()
+                    api.Event:Fire(api.Value)
+                end
+            end)
+        end)
+
+        function api.Set(v) api.Value = v; bindBtn.Text = v end
+        api.Instance = row
+        function api.Destroy() row:Destroy() end
+        return api
+    end
+
+    ------------------------------------------------------------------
+    -- Expandable option list. Options can be replaced later via SetOptions
+    -- (handy for a "Refresh" button next to a config selector).
+    function factory.Dropdown(opts)
+        opts = opts or {}
+        local api = {}
+        api.Event = Signal.new() -- fires the selected option
+        api.Value = opts.default
+
+        local holder = Instance.new("Frame")
+        holder.BackgroundTransparency = 1
+        holder.Size = UDim2.new(1, 0, 0, 34)
+        holder.ClipsDescendants = true
+        holder.Parent = container
+        claimOrder(holder)
+
+        local head = Instance.new("TextButton")
+        head.AutoButtonColor = false
+        head.BackgroundColor3 = Theme.PanelLight
+        head.Size = UDim2.new(1, 0, 0, 34)
+        head.Font = Theme.Font
+        head.TextSize = 14
+        head.TextColor3 = Theme.Text
+        head.TextXAlignment = Enum.TextXAlignment.Left
+        head.Parent = holder
+        Round(head, 6)
+        Stroke(head)
+        Pad(head, 10)
+
+        local chevron = Instance.new("TextLabel")
+        chevron.BackgroundTransparency = 1
+        chevron.AnchorPoint = Vector2.new(1, 0.5)
+        chevron.Position = UDim2.new(1, -10, 0.5, 0)
+        chevron.Size = UDim2.new(0, 16, 0, 16)
+        chevron.Font = Theme.Font
+        chevron.TextSize = 12
+        chevron.TextColor3 = Theme.SubText
+        chevron.Text = "⌄"
+        chevron.Parent = head
+
+        local list = Instance.new("Frame")
+        list.BackgroundTransparency = 1
+        list.Position = UDim2.new(0, 0, 0, 38)
+        list.Size = UDim2.new(1, 0, 0, 0)
+        list.AutomaticSize = Enum.AutomaticSize.Y
+        list.Parent = holder
+
+        local listLayout = Instance.new("UIListLayout")
+        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        listLayout.Padding = UDim.new(0, 4)
+        listLayout.Parent = list
+
+        local isOpen = false
+        local optionButtons = {}
+
+        local function resizeHolder()
+            local target = isOpen and (34 + 4 + list.AbsoluteSize.Y) or 34
+            Tween(holder, { Size = UDim2.new(1, 0, 0, target) }, 0.12)
+        end
+
+        function api.Set(v, silent)
+            api.Value = v
+            head.Text = tostring(v)
+            if not silent then api.Event:Fire(v) end
+        end
+        api.Set(opts.default or opts.placeholder or "...", true)
+
+        function api.SetOptions(options)
+            for _, b in ipairs(optionButtons) do b:Destroy() end
+            optionButtons = {}
+            for _, optionText in ipairs(options or {}) do
+                local optBtn = Instance.new("TextButton")
+                optBtn.AutoButtonColor = false
+                optBtn.BackgroundColor3 = Theme.Panel
+                optBtn.Size = UDim2.new(1, 0, 0, 28)
+                optBtn.Font = Theme.Font
+                optBtn.TextSize = 13
+                optBtn.TextColor3 = Theme.SubText
+                optBtn.Text = optionText
+                optBtn.Parent = list
+                Round(optBtn, 5)
+                optBtn.MouseButton1Click:Connect(function()
+                    api.Set(optionText)
+                    isOpen = false
+                    chevron.Text = "⌄"
+                    resizeHolder()
+                end)
+                table.insert(optionButtons, optBtn)
+            end
+            resizeHolder()
+        end
+
+        head.MouseButton1Click:Connect(function()
+            isOpen = not isOpen
+            chevron.Text = isOpen and "›" or "⌄"
+            resizeHolder()
+        end)
+
+        api.SetOptions(opts.options or {})
+        api.Instance = holder
+        function api.Destroy() holder:Destroy() end
+        return api
+    end
+
     return factory
 end
 
@@ -529,8 +694,7 @@ local function NewCategory(parentColumn, opts)
     chevron.Font = Theme.Font
     chevron.TextSize = 14
     chevron.TextColor3 = Theme.SubText
-    chevron.Text = "⌄"
-    chevron.Rotation = isOpen and 0 or -90
+    chevron.Text = isOpen and "⌄" or "›" -- down when expanded, right-pointing when collapsed
     chevron.Parent = card
 
     local body = Instance.new("Frame")
@@ -555,7 +719,7 @@ local function NewCategory(parentColumn, opts)
 
     local function setOpen(v)
         isOpen = v
-        Tween(chevron, { Rotation = isOpen and 0 or -90 }, 0.15)
+        chevron.Text = isOpen and "⌄" or "›"
         resize()
     end
 
@@ -567,6 +731,95 @@ local function NewCategory(parentColumn, opts)
     api.Instance = card
     function api.Destroy() card:Destroy() end
     return api
+end
+
+------------------------------------------------------------------
+-- Two-column, auto-balancing category layout — used once per tab page
+------------------------------------------------------------------
+
+local function BuildCategoryPage(parentFrame)
+    local pageApi = {}
+
+    local columnGap = 12
+    local leftCol = Instance.new("ScrollingFrame")
+    leftCol.BackgroundTransparency = 1
+    leftCol.BorderSizePixel = 0
+    leftCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
+    leftCol.CanvasSize = UDim2.new(0, 0, 0, 0)
+    leftCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    leftCol.ScrollBarThickness = 3
+    leftCol.ScrollBarImageColor3 = Theme.Accent
+    leftCol.Parent = parentFrame
+
+    local rightCol = Instance.new("ScrollingFrame")
+    rightCol.BackgroundTransparency = 1
+    rightCol.BorderSizePixel = 0
+    rightCol.Position = UDim2.new(0.5, columnGap / 2, 0, 0)
+    rightCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
+    rightCol.CanvasSize = UDim2.new(0, 0, 0, 0)
+    rightCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    rightCol.ScrollBarThickness = 3
+    rightCol.ScrollBarImageColor3 = Theme.Accent
+    rightCol.Parent = parentFrame
+
+    for _, col in ipairs({ leftCol, rightCol }) do
+        local l = Instance.new("UIListLayout")
+        l.SortOrder = Enum.SortOrder.LayoutOrder
+        l.Padding = UDim.new(0, 16)
+        l.Parent = col
+    end
+
+    -- if there's only ever one category, stretch it across the full width
+    -- instead of leaving an empty second column
+    local categoryCount = 0
+    local function updateSingleCategoryLayout()
+        if categoryCount <= 1 then
+            leftCol.Size = UDim2.new(1, 0, 1, 0)
+            rightCol.Visible = false
+        else
+            leftCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
+            rightCol.Visible = true
+        end
+    end
+    updateSingleCategoryLayout()
+
+    -- Auto-balance columns using our own running height total instead of
+    -- reading AbsoluteCanvasSize at call time — that property can lag a
+    -- frame behind the Instance.new() calls we just made, which was
+    -- causing every category to pile into the same column.
+    local leftHeight, rightHeight = 0, 0
+    local categoryLayoutOrder = 0
+
+    function pageApi.new(catOptions)
+        categoryCount = categoryCount + 1
+        updateSingleCategoryLayout() -- resize/reveal the column BEFORE parenting into it
+
+        local targetCol = (leftHeight <= rightHeight) and leftCol or rightCol
+        local category = NewCategory(targetCol, catOptions)
+
+        categoryLayoutOrder = categoryLayoutOrder + 1
+        category.Instance.LayoutOrder = categoryLayoutOrder
+
+        -- Track this category's contribution to its column's total height as a
+        -- running delta, so leftHeight/rightHeight always reflect the sum of
+        -- every category in that column, not just the last one that resized.
+        local lastKnownHeight = 40
+        if targetCol == leftCol then leftHeight = leftHeight + lastKnownHeight
+        else rightHeight = rightHeight + lastKnownHeight end
+
+        category.Instance:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+            local newHeight = category.Instance.AbsoluteSize.Y
+            local delta = newHeight - lastKnownHeight
+            lastKnownHeight = newHeight
+            if targetCol == leftCol then leftHeight = leftHeight + delta
+            else rightHeight = rightHeight + delta end
+        end)
+
+        return category
+    end
+
+    pageApi.Instance = parentFrame
+    return pageApi
 end
 
 ------------------------------------------------------------------
@@ -662,28 +915,6 @@ function Library.new(options)
     avatarImage.Parent = userChip
     Round(avatarImage, 18)
 
-    -- notification badge, anchored to the user chip's top-right corner
-    local badge = Instance.new("Frame")
-    badge.AnchorPoint = Vector2.new(1, 0)
-    badge.Position = UDim2.new(1, 4, 0, -4)
-    badge.Size = UDim2.new(0, 16, 0, 16)
-    badge.BackgroundColor3 = Color3.fromRGB(237, 66, 69)
-    badge.Visible = false
-    badge.ZIndex = 5
-    badge.Parent = userChip
-    Round(badge, 8)
-    Stroke(badge, Theme.Header, 2, 0)
-
-    local badgeLabel = Instance.new("TextLabel")
-    badgeLabel.BackgroundTransparency = 1
-    badgeLabel.Size = UDim2.new(1, 0, 1, 0)
-    badgeLabel.Font = Theme.FontBold
-    badgeLabel.TextSize = 10
-    badgeLabel.TextColor3 = Color3.new(1, 1, 1)
-    badgeLabel.Text = ""
-    badgeLabel.ZIndex = 6
-    badgeLabel.Parent = badge
-
     local function setAvatar()
         if not LocalPlayer then return end
         local ok, content = pcall(function()
@@ -693,15 +924,6 @@ function Library.new(options)
     end
     task.spawn(setAvatar)
 
-    function api.Notify(count)
-        if count == nil or count <= 0 then
-            badge.Visible = false
-            return
-        end
-        badge.Visible = true
-        badgeLabel.Text = count > 9 and "9+" or tostring(count)
-    end
-
     MakeDraggable(window, header)
     window.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -710,91 +932,149 @@ function Library.new(options)
     end)
 
     ------------------------------------------------------------------
-    -- Body: two auto-balancing columns of categories
+    -- Icon tab bar + one page per tab (each page is its own two-column
+    -- category layout, built with BuildCategoryPage above)
     ------------------------------------------------------------------
-    local body = Instance.new("Frame")
-    body.BackgroundTransparency = 1
-    body.Position = UDim2.new(0, 16, 0, 80)
-    body.Size = UDim2.new(1, -32, 1, -96)
-    body.Parent = window
+    local tabBar = Instance.new("Frame")
+    tabBar.BackgroundTransparency = 1
+    tabBar.Position = UDim2.new(0, 16, 0, 76)
+    tabBar.Size = UDim2.new(1, -32, 0, 36)
+    tabBar.Parent = window
 
-    local columnGap = 12
-    local leftCol = Instance.new("ScrollingFrame")
-    leftCol.BackgroundTransparency = 1
-    leftCol.BorderSizePixel = 0
-    leftCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
-    leftCol.CanvasSize = UDim2.new(0, 0, 0, 0)
-    leftCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    leftCol.ScrollBarThickness = 3
-    leftCol.ScrollBarImageColor3 = Theme.Accent
-    leftCol.Parent = body
+    local tabBarLayout = Instance.new("UIListLayout")
+    tabBarLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    tabBarLayout.Padding = UDim.new(0, 8)
+    tabBarLayout.Parent = tabBar
 
-    local rightCol = Instance.new("ScrollingFrame")
-    rightCol.BackgroundTransparency = 1
-    rightCol.BorderSizePixel = 0
-    rightCol.Position = UDim2.new(0.5, columnGap / 2, 0, 0)
-    rightCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
-    rightCol.CanvasSize = UDim2.new(0, 0, 0, 0)
-    rightCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    rightCol.ScrollBarThickness = 3
-    rightCol.ScrollBarImageColor3 = Theme.Accent
-    rightCol.Parent = body
+    local pagesContainer = Instance.new("Frame")
+    pagesContainer.BackgroundTransparency = 1
+    pagesContainer.Position = UDim2.new(0, 16, 0, 122)
+    pagesContainer.Size = UDim2.new(1, -32, 1, -138)
+    pagesContainer.Parent = window
 
-    for _, col in ipairs({ leftCol, rightCol }) do
-        local l = Instance.new("UIListLayout")
-        l.SortOrder = Enum.SortOrder.LayoutOrder
-        l.Padding = UDim.new(0, 16)
-        l.Parent = col
-    end
+    local tabs = {}
+    local selectedTab = nil
 
-    -- if there's only ever one category, stretch it across the full width
-    -- instead of leaving an empty second column
-    local categoryCount = 0
-    local function updateSingleCategoryLayout()
-        if categoryCount <= 1 then
-            leftCol.Size = UDim2.new(1, 0, 1, 0)
-            rightCol.Visible = false
-        else
-            leftCol.Size = UDim2.new(0.5, -columnGap / 2, 1, 0)
-            rightCol.Visible = true
+    local function selectTab(id)
+        selectedTab = id
+        for _, t in ipairs(tabs) do
+            local isSelected = (t.id == id)
+            t.page.Visible = isSelected
+            Tween(t.button, {
+                BackgroundColor3 = isSelected and Theme.Accent or Theme.PanelLight,
+                TextColor3 = isSelected and Color3.new(1, 1, 1) or Theme.SubText,
+            }, 0.1)
         end
     end
 
-    -- Auto-balance columns using our own running height total instead of
-    -- reading AbsoluteCanvasSize at call time — that property can lag a
-    -- frame behind the Instance.new() calls we just made, which was
-    -- causing every category to pile into the same column.
-    local leftHeight, rightHeight = 0, 0
-    local categoryLayoutOrder = 0
+    -- Create a new tab. opts.icon is a single glyph/emoji shown in the tab
+    -- bar (e.g. "👤" or "⚙"), opts.name is used for the tooltip-ish text
+    -- inside longer tab buttons if you pass opts.wide = true.
+    function api.Tab(opts)
+        opts = opts or {}
 
-    function api.new(catOptions)
-        categoryCount = categoryCount + 1
-        updateSingleCategoryLayout() -- resize/reveal the column BEFORE parenting into it
+        local page = Instance.new("Frame")
+        page.BackgroundTransparency = 1
+        page.Size = UDim2.new(1, 0, 1, 0)
+        page.Visible = false
+        page.Parent = pagesContainer
 
-        local targetCol = (leftHeight <= rightHeight) and leftCol or rightCol
-        local category = NewCategory(targetCol, catOptions)
+        local btn = Instance.new("TextButton")
+        btn.AutoButtonColor = false
+        btn.BackgroundColor3 = Theme.PanelLight
+        btn.Size = opts.wide and UDim2.new(0, 120, 1, 0) or UDim2.new(0, 36, 1, 0)
+        btn.Font = Theme.FontBold
+        btn.TextSize = 16
+        btn.TextColor3 = Theme.SubText
+        btn.Text = opts.wide and ((opts.icon and (opts.icon .. "  ") or "") .. (opts.name or "Tab")) or (opts.icon or "•")
+        btn.Parent = tabBar
+        Round(btn, 8)
 
-        categoryLayoutOrder = categoryLayoutOrder + 1
-        category.Instance.LayoutOrder = categoryLayoutOrder
+        local id = #tabs + 1
+        local pageApi = BuildCategoryPage(page)
+        tabs[id] = { id = id, page = page, button = btn, pageApi = pageApi }
+        btn.MouseButton1Click:Connect(function() selectTab(id) end)
 
-        -- Track this category's contribution to its column's total height as a
-        -- running delta, so leftHeight/rightHeight always reflect the sum of
-        -- every category in that column, not just the last one that resized.
-        local lastKnownHeight = 40
-        if targetCol == leftCol then leftHeight = leftHeight + lastKnownHeight
-        else rightHeight = rightHeight + lastKnownHeight end
+        local tabApi = { new = pageApi.new, Instance = page, Button = btn }
 
-        category.Instance:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-            local newHeight = category.Instance.AbsoluteSize.Y
-            local delta = newHeight - lastKnownHeight
-            lastKnownHeight = newHeight
-            if targetCol == leftCol then leftHeight = leftHeight + delta
-            else rightHeight = rightHeight + delta end
-        end)
-
-        return category
+        if id == 1 then selectTab(id) end
+        return tabApi
     end
-    updateSingleCategoryLayout()
+
+    -- Fallback for simple, tab-less usage: window.new(...) works exactly like
+    -- before by silently creating a single default tab the first time it's called.
+    function api.new(catOptions)
+        if not tabs[1] then api.Tab({ icon = "≡" }) end
+        return tabs[1].pageApi.new(catOptions)
+    end
+
+    -- Built-in Settings + Configs tab: menu keybind capture, unload button,
+    -- fade/animation sliders, and a config selector wired to events you
+    -- connect your own save/load logic to.
+    function api.SettingsTab(opts)
+        opts = opts or {}
+        local tab = api.Tab({ name = opts.name or "Settings", icon = opts.icon or "⚙" })
+
+        local settingsCat = tab.new({ text = "Settings" })
+        local keybind = settingsCat.Keybind({ text = "Menu Keybind", default = opts.keybind or "RightControl" })
+        local unloadBtn = settingsCat.Button({ text = "Unload" })
+        local fadeSlider = settingsCat.Slider({ text = "Fade Time", min = 0, max = 100, default = (opts.fadeTime or 0.2) * 100, suffix = "s" })
+        local animSlider = settingsCat.Slider({ text = "Animation Speed", min = 0, max = 100, default = (opts.animationSpeed or 0.25) * 100, suffix = "s" })
+
+        local configsCat = tab.new({ text = "Configs" })
+        local configDropdown = configsCat.Dropdown({ options = opts.configs or {}, placeholder = "..." })
+        local nameBox = configsCat.TextBox({ placeholder = "Config name" })
+        local createBtn = configsCat.Button({ text = "Create" })
+        local loadBtn = configsCat.Button({ text = "Load" })
+        local saveBtn = configsCat.Button({ text = "Save" })
+        local deleteBtn = configsCat.Button({ text = "Delete" })
+        local refreshBtn = configsCat.Button({ text = "Refresh" })
+
+        local settingsApi = {}
+        settingsApi.KeybindEvent = keybind.Event
+        settingsApi.UnloadEvent = unloadBtn.Event
+        settingsApi.FadeTimeEvent = fadeSlider.Event
+        settingsApi.AnimationSpeedEvent = animSlider.Event
+        settingsApi.ConfigCreateEvent = Signal.new()
+        settingsApi.ConfigLoadEvent = Signal.new()
+        settingsApi.ConfigSaveEvent = Signal.new()
+        settingsApi.ConfigDeleteEvent = Signal.new()
+        settingsApi.ConfigRefreshEvent = Signal.new()
+
+        createBtn.Event:Connect(function() settingsApi.ConfigCreateEvent:Fire(nameBox.Get()) end)
+        loadBtn.Event:Connect(function() settingsApi.ConfigLoadEvent:Fire(configDropdown.Value) end)
+        saveBtn.Event:Connect(function() settingsApi.ConfigSaveEvent:Fire(configDropdown.Value) end)
+        deleteBtn.Event:Connect(function() settingsApi.ConfigDeleteEvent:Fire(configDropdown.Value) end)
+        refreshBtn.Event:Connect(function() settingsApi.ConfigRefreshEvent:Fire() end)
+
+        -- sensible defaults: the menu keybind actually toggles the window,
+        -- and Unload actually tears the UI down — override by disconnecting
+        -- and reconnecting your own handlers if you want different behavior
+        keybind.Event:Connect(function(key) api.SetMenuKeybind(key) end)
+        unloadBtn.Event:Connect(function() api.Destroy() end)
+
+        function settingsApi.SetConfigList(list) configDropdown.SetOptions(list) end
+        settingsApi.Tab = tab
+        settingsApi.MenuKeybind = keybind
+        settingsApi.ConfigDropdown = configDropdown
+        return settingsApi
+    end
+
+    ------------------------------------------------------------------
+    -- Menu keybind (defaults to RightControl) — toggles the whole window
+    ------------------------------------------------------------------
+    local menuKeyCode = Enum.KeyCode.RightControl
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == menuKeyCode then
+            api.Toggle()
+        end
+    end)
+    function api.SetMenuKeybind(keyCodeName)
+        local ok, code = pcall(function() return Enum.KeyCode[keyCodeName] end)
+        if ok and code then menuKeyCode = code end
+    end
 
     function api.Open() glow.Visible = true end
     function api.Close() glow.Visible = false end
