@@ -678,7 +678,7 @@ local function NewCategory(parentColumn, opts)
     local title = Instance.new("TextLabel")
     title.BackgroundTransparency = 1
     title.Position = UDim2.new(0, 16, 0, 0)
-    title.Size = UDim2.new(1, -46, 1, 0)
+    title.Size = UDim2.new(1, -46, 0, 40) -- fixed to the header strip, not the whole (growing) card
     title.Font = Theme.FontBold
     title.TextSize = 14
     title.TextColor3 = Theme.Text
@@ -689,7 +689,7 @@ local function NewCategory(parentColumn, opts)
     local chevron = Instance.new("TextLabel")
     chevron.BackgroundTransparency = 1
     chevron.AnchorPoint = Vector2.new(1, 0.5)
-    chevron.Position = UDim2.new(1, -14, 0.5, 0)
+    chevron.Position = UDim2.new(1, -14, 0, 20) -- fixed to the header strip's vertical center, not the card's
     chevron.Size = UDim2.new(0, 16, 0, 16)
     chevron.Font = Theme.Font
     chevron.TextSize = 14
