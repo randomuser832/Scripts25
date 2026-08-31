@@ -631,16 +631,26 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(searchBox, 6)
         Pad(searchBox, 8)
 
+        -- Fixed max height (roughly 6 rows) instead of AutomaticSize — a
+        -- ScrollingFrame that auto-sizes to its content never has anything
+        -- to scroll, since it just grows to fit everything. Capping the
+        -- height here is what makes the mouse wheel actually do something
+        -- once there are more options than fit.
+        local LIST_MAX_HEIGHT = 200
+        local ROW_HEIGHT = 30
+        local ROW_PADDING = 4
+
         local list = Instance.new("ScrollingFrame")
         list.BackgroundTransparency = 1
         list.BorderSizePixel = 0
         list.Position = UDim2.new(0, 8, 0, 46)
         list.Size = UDim2.new(1, -16, 0, 0)
-        list.AutomaticSize = Enum.AutomaticSize.Y
         list.AutomaticCanvasSize = Enum.AutomaticSize.Y
         list.CanvasSize = UDim2.new(0, 0, 0, 0)
         list.ScrollBarThickness = 3
         list.ScrollBarImageColor3 = Theme.Accent
+        list.ScrollingDirection = Enum.ScrollingDirection.Y
+        list.ElasticBehavior = Enum.ElasticBehavior.Never
         list.ZIndex = 501
         list.Parent = panel
 
@@ -732,6 +742,12 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
                 end)
                 table.insert(optionButtons, optBtn)
             end
+
+            local numOptions = #allOptions
+            local contentHeight = numOptions > 0
+                and (numOptions * ROW_HEIGHT + math.max(0, numOptions - 1) * ROW_PADDING)
+                or 0
+            list.Size = UDim2.new(1, -16, 0, math.min(contentHeight, LIST_MAX_HEIGHT))
         end
 
         searchBox:GetPropertyChangedSignal("Text"):Connect(function()
