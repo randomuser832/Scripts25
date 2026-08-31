@@ -570,16 +570,35 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         api.Event = Signal.new() -- fires the selected option
         api.Value = opts.default
 
+        local hasLabel = opts.text ~= nil
+        local HEAD_HEIGHT = 34
+        local LABEL_HEIGHT = 16
+        local LABEL_GAP = 4
+        local holderHeight = hasLabel and (LABEL_HEIGHT + LABEL_GAP + HEAD_HEIGHT) or HEAD_HEIGHT
+
         local holder = Instance.new("Frame")
         holder.BackgroundTransparency = 1
-        holder.Size = UDim2.new(1, 0, 0, 34)
+        holder.Size = UDim2.new(1, 0, 0, holderHeight)
         holder.Parent = container
         claimOrder(holder)
+
+        if hasLabel then
+            local label = Instance.new("TextLabel")
+            label.BackgroundTransparency = 1
+            label.Size = UDim2.new(1, 0, 0, LABEL_HEIGHT)
+            label.Font = Theme.Font
+            label.TextSize = 13
+            label.TextColor3 = Theme.SubText
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Text = opts.text
+            label.Parent = holder
+        end
 
         local head = Instance.new("TextButton")
         head.AutoButtonColor = false
         head.BackgroundColor3 = Theme.PanelLight
-        head.Size = UDim2.new(1, 0, 1, 0)
+        head.Position = UDim2.new(0, 0, 0, hasLabel and (LABEL_HEIGHT + LABEL_GAP) or 0)
+        head.Size = UDim2.new(1, 0, 0, HEAD_HEIGHT)
         head.Font = Theme.Font
         head.TextSize = 14
         head.TextColor3 = Theme.Text
@@ -631,14 +650,20 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(searchBox, 6)
         Pad(searchBox, 8)
 
-        -- Fixed max height (roughly 6 rows) instead of AutomaticSize — a
-        -- ScrollingFrame that auto-sizes to its content never has anything
-        -- to scroll, since it just grows to fit everything. Capping the
-        -- height here is what makes the mouse wheel actually do something
-        -- once there are more options than fit.
-        local LIST_MAX_HEIGHT = 200
+        -- Fixed max height instead of AutomaticSize — a ScrollingFrame
+        -- that auto-sizes to its content never has anything to scroll,
+        -- since it just grows to fit everything. Capping the height here
+        -- is what makes the mouse wheel actually do something once there
+        -- are more options than fit — and there's no upper limit on how
+        -- many options you can pass in (20 player names, a full item
+        -- list, whatever); it just scrolls/searches past whatever doesn't
+        -- fit in maxVisibleRows. Defaults to 6 rows; pass a bigger
+        -- opts.maxVisibleRows for something like a player-name dropdown
+        -- where you want more visible at once before scrolling kicks in.
         local ROW_HEIGHT = 30
         local ROW_PADDING = 4
+        local maxVisibleRows = opts.maxVisibleRows or 6
+        local LIST_MAX_HEIGHT = maxVisibleRows * ROW_HEIGHT + math.max(0, maxVisibleRows - 1) * ROW_PADDING
 
         local list = Instance.new("ScrollingFrame")
         list.BackgroundTransparency = 1
@@ -1452,26 +1477,40 @@ function Library.new(options)
                 api.Notify({ title = "Config", text = ok and ("Created \"" .. name .. "\".") or "Couldn't save (no executor file access?)." })
             end
         end)
+        local CONFIG_PLACEHOLDER = "..."
+        local function hasValidSelection()
+            local v = configDropdown.Value
+            return v ~= nil and v ~= CONFIG_PLACEHOLDER
+        end
+
         loadBtn.Event:Connect(function()
             settingsApi.ConfigLoadEvent:Fire(configDropdown.Value)
-            if configDropdown.Value then
+            if hasValidSelection() then
                 local ok = api.LoadConfig(configDropdown.Value)
                 api.Notify({ title = "Config", text = ok and ("Loaded \"" .. configDropdown.Value .. "\".") or "Couldn't load that config." })
+            else
+                api.Notify({ title = "Config", text = "Select a config first." })
             end
         end)
         saveBtn.Event:Connect(function()
             settingsApi.ConfigSaveEvent:Fire(configDropdown.Value)
-            if configDropdown.Value then
+            if hasValidSelection() then
                 local ok = api.SaveConfig(configDropdown.Value)
                 api.Notify({ title = "Config", text = ok and ("Saved \"" .. configDropdown.Value .. "\".") or "Couldn't save that config." })
+            else
+                api.Notify({ title = "Config", text = "Select a config first." })
             end
         end)
         deleteBtn.Event:Connect(function()
             settingsApi.ConfigDeleteEvent:Fire(configDropdown.Value)
-            if configDropdown.Value then
-                api.DeleteConfig(configDropdown.Value)
+            if hasValidSelection() then
+                local deletedName = configDropdown.Value
+                api.DeleteConfig(deletedName)
                 refreshDropdown()
-                api.Notify({ title = "Config", text = "Deleted." })
+                configDropdown.Set(CONFIG_PLACEHOLDER, true) -- don't keep showing a name that no longer exists
+                api.Notify({ title = "Config", text = "Deleted \"" .. deletedName .. "\"." })
+            else
+                api.Notify({ title = "Config", text = "Select a config first." })
             end
         end)
         refreshBtn.Event:Connect(function()
