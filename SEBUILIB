@@ -634,10 +634,23 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(panel, 8)
         Stroke(panel, Theme.Accent, 1, 0.5)
 
+        -- A real UIListLayout + UIPadding drives panel's height here, instead
+        -- of hand-placed children — that's what guarantees a correct, real
+        -- gap below the last row. (The previous "bottomSpacer" frame was
+        -- positioned at the panel's top-left by default, contributing zero
+        -- actual bottom padding, so the list's last row sat flush against
+        -- the panel's clipped edge — which is exactly what made the bottom
+        -- row(s) unreliable to click.)
+        local panelLayout = Instance.new("UIListLayout")
+        panelLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        panelLayout.Padding = UDim.new(0, 8)
+        panelLayout.Parent = panel
+        Pad(panel, 8)
+
         local searchBox = Instance.new("TextBox")
         searchBox.BackgroundColor3 = Theme.PanelLight
-        searchBox.Position = UDim2.new(0, 8, 0, 8)
-        searchBox.Size = UDim2.new(1, -16, 0, 30)
+        searchBox.Size = UDim2.new(1, 0, 0, 30)
+        searchBox.LayoutOrder = 1
         searchBox.Font = Theme.Font
         searchBox.TextSize = 13
         searchBox.TextColor3 = Theme.Text
@@ -668,8 +681,8 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         local list = Instance.new("ScrollingFrame")
         list.BackgroundTransparency = 1
         list.BorderSizePixel = 0
-        list.Position = UDim2.new(0, 8, 0, 46)
-        list.Size = UDim2.new(1, -16, 0, 0)
+        list.Size = UDim2.new(1, 0, 0, 0)
+        list.LayoutOrder = 2
         list.AutomaticCanvasSize = Enum.AutomaticSize.Y
         list.CanvasSize = UDim2.new(0, 0, 0, 0)
         list.ScrollBarThickness = 3
@@ -683,12 +696,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         listLayout.SortOrder = Enum.SortOrder.LayoutOrder
         listLayout.Padding = UDim.new(0, 4)
         listLayout.Parent = list
-
-        local bottomSpacer = Instance.new("Frame")
-        bottomSpacer.BackgroundTransparency = 1
-        bottomSpacer.Size = UDim2.new(1, 0, 0, 8)
-        bottomSpacer.LayoutOrder = 9999
-        bottomSpacer.Parent = panel
 
         local isOpen = false
         local optionButtons = {}
@@ -772,7 +779,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             local contentHeight = numOptions > 0
                 and (numOptions * ROW_HEIGHT + math.max(0, numOptions - 1) * ROW_PADDING)
                 or 0
-            list.Size = UDim2.new(1, -16, 0, math.min(contentHeight, LIST_MAX_HEIGHT))
+            list.Size = UDim2.new(1, 0, 0, math.min(contentHeight, LIST_MAX_HEIGHT))
         end
 
         searchBox:GetPropertyChangedSignal("Text"):Connect(function()
