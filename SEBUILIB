@@ -148,6 +148,9 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(onSizeChanged)
     end
 
+    -- Every element gets an increasing LayoutOrder so rows always stack in the
+    -- order you called them in, even if Roblox ties same-order instances in a
+    -- way you don't expect.
     local nextOrder = 0
     local function claimOrder(inst)
         nextOrder = nextOrder + 1
@@ -155,6 +158,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
+    -- Square checkbox + label (matches the reference screenshot style)
     function factory.Toggle(opts)
         opts = opts or {}
         local api = {}
@@ -230,11 +234,12 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
+    -- Toggle row + a "keybind" label on the right (e.g. "Modify WalkSpeed  None")
     function factory.KeybindToggle(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new()
-        api.BindEvent = Signal.new()
+        api.Event = Signal.new()      -- fires (enabled)
+        api.BindEvent = Signal.new()  -- fires (keyName)
         api.Value = not not opts.default
         api.Bind = opts.defaultBind or "None"
 
@@ -301,10 +306,11 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
+    -- A text field for freeform input (amounts, names, etc.)
     function factory.TextBox(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new()
+        api.Event = Signal.new() -- fires on Enter, passes text
         api.Text = ""
 
         local box = Instance.new("TextBox")
@@ -370,6 +376,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
+    -- Slider with a percentage/number readout, matching the reference bars
     function factory.Slider(opts)
         opts = opts or {}
         local api = {}
@@ -486,10 +493,12 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
+    -- A standalone "click to rebind" row (label + current key on the right).
+    -- Generic — useful for a menu-toggle keybind, an action keybind, etc.
     function factory.Keybind(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new()
+        api.Event = Signal.new() -- fires the new key name after a rebind
         api.Value = opts.default or "None"
 
         local row = Instance.new("Frame")
@@ -551,13 +560,14 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
 
     ------------------------------------------------------------------
     -- Dropdown. The option list is a FLOATING panel parented to the top
-    -- ScreenGui layer, so opening it never grows/reflows the category
-    -- it lives in and never overlaps other content — it floats above
-    -- everything and closes on an outside click.
+    -- ScreenGui layer (not the category body), so opening it never grows
+    -- or reflows the category it lives in and never overlaps sibling
+    -- rows or a different category's content — it just floats above
+    -- everything, like a native dropdown, and closes on an outside click.
     function factory.Dropdown(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new()
+        api.Event = Signal.new() -- fires the selected option
         api.Value = opts.default
 
         local hasLabel = opts.text ~= nil
@@ -606,38 +616,31 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         chevron.Font = Theme.FontBold
         chevron.TextSize = 14
         chevron.TextColor3 = Theme.SubText
-        chevron.Text = ">"
-        chevron.Rotation = 0
+        chevron.Text = ">" -- plain ASCII, rotated — fancy unicode chevrons render as
+        chevron.Rotation = 0 -- boxes/tofu on Roblox's default fonts, so we rotate a safe glyph instead
         chevron.Parent = head
 
-        -- click-blocking scrim, shown behind the panel whenever it's open.
-        -- Any click that isn't consumed by an option/search box in the
-        -- panel lands on this instead of falling through to whatever
-        -- widget happens to be underneath on screen.
-        local scrim = Instance.new("TextButton")
-        scrim.BackgroundTransparency = 1
-        scrim.AutoButtonColor = false
-        scrim.Text = ""
-        scrim.Size = UDim2.new(1, 0, 1, 0)
-        scrim.ZIndex = 499
-        scrim.Visible = false
-        scrim.Parent = ScreenGui
-
-        -- floating panel — sibling of the window, not a child of the
-        -- category, so it renders above everything and never affects
-        -- anyone else's layout.
+        -- floating panel — sibling of the window, not a child of the category,
+        -- so it renders above EVERYTHING (other categories, other tabs, etc.)
+        -- and never affects anyone else's layout
         local panel = Instance.new("Frame")
-        panel.Active = true -- WITHOUT this, a plain Frame doesn't block clicks to
-        panel.Visible = false -- whatever's behind it — only its buttons would; clicks
-        panel.BackgroundColor3 = Theme.Panel -- landing on the panel's own background/padding
-        panel.Size = UDim2.new(0, 220, 0, 0) -- would fall straight through to the widget
-        panel.AutomaticSize = Enum.AutomaticSize.Y -- underneath on screen otherwise.
+        panel.Visible = false
+        panel.BackgroundColor3 = Theme.Panel
+        panel.Size = UDim2.new(0, 220, 0, 0)
+        panel.AutomaticSize = Enum.AutomaticSize.Y
         panel.ClipsDescendants = true
         panel.ZIndex = 500
         panel.Parent = ScreenGui
         Round(panel, 8)
         Stroke(panel, Theme.Accent, 1, 0.5)
 
+        -- A real UIListLayout + UIPadding drives panel's height here, instead
+        -- of hand-placed children — that's what guarantees a correct, real
+        -- gap below the last row. (The previous "bottomSpacer" frame was
+        -- positioned at the panel's top-left by default, contributing zero
+        -- actual bottom padding, so the list's last row sat flush against
+        -- the panel's clipped edge — which is exactly what made the bottom
+        -- row(s) unreliable to click.)
         local panelLayout = Instance.new("UIListLayout")
         panelLayout.SortOrder = Enum.SortOrder.LayoutOrder
         panelLayout.Padding = UDim.new(0, 8)
@@ -660,6 +663,16 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(searchBox, 6)
         Pad(searchBox, 8)
 
+        -- Fixed max height instead of AutomaticSize — a ScrollingFrame
+        -- that auto-sizes to its content never has anything to scroll,
+        -- since it just grows to fit everything. Capping the height here
+        -- is what makes the mouse wheel actually do something once there
+        -- are more options than fit — and there's no upper limit on how
+        -- many options you can pass in (20 player names, a full item
+        -- list, whatever); it just scrolls/searches past whatever doesn't
+        -- fit in maxVisibleRows. Defaults to 6 rows; pass a bigger
+        -- opts.maxVisibleRows for something like a player-name dropdown
+        -- where you want more visible at once before scrolling kicks in.
         local ROW_HEIGHT = 30
         local ROW_PADDING = 4
         local maxVisibleRows = opts.maxVisibleRows or 6
@@ -695,6 +708,8 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             local screenSize = ScreenGui.AbsoluteSize
             local panelHeight = panel.AbsoluteSize.Y
             local y = pos.Y + size.Y + 6
+            -- flip above the button if there isn't room below, so it never
+            -- gets clipped off the bottom of the screen
             if y + panelHeight > screenSize.Y and pos.Y - panelHeight - 6 > 0 then
                 y = pos.Y - panelHeight - 6
             end
@@ -706,7 +721,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             if not isOpen then return end
             isOpen = false
             panel.Visible = false
-            scrim.Visible = false
             Tween(chevron, { Rotation = 0 }, 0.1)
             if renderStepConn then renderStepConn:Disconnect(); renderStepConn = nil end
         end
@@ -717,10 +731,11 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             searchBox.Text = ""
             for _, b in ipairs(optionButtons) do b.Visible = true end
             positionPanel()
-            scrim.Visible = true
             panel.Visible = true
             BringToFront(panel)
             Tween(chevron, { Rotation = 90 }, 0.1)
+            -- keep the panel glued under the button if the window is dragged
+            -- while the dropdown is open
             renderStepConn = RunService.RenderStepped:Connect(positionPanel)
         end
 
@@ -778,7 +793,22 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         head.MouseButton1Click:Connect(function()
             if isOpen then close() else open() end
         end)
-        scrim.MouseButton1Click:Connect(close)
+
+        -- click-away-to-close: any click outside the head or the panel closes it
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if not isOpen then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            task.defer(function()
+                local mouse = UserInputService:GetMouseLocation()
+                local overHead = mouse.X >= head.AbsolutePosition.X and mouse.X <= head.AbsolutePosition.X + head.AbsoluteSize.X
+                    and mouse.Y >= head.AbsolutePosition.Y and mouse.Y <= head.AbsolutePosition.Y + head.AbsoluteSize.Y
+                local overPanel = mouse.X >= panel.AbsolutePosition.X and mouse.X <= panel.AbsolutePosition.X + panel.AbsoluteSize.X
+                    and mouse.Y >= panel.AbsolutePosition.Y and mouse.Y <= panel.AbsolutePosition.Y + panel.AbsoluteSize.Y
+                if not overHead and not overPanel then
+                    close()
+                end
+            end)
+        end)
 
         api.SetOptions(opts.options or {})
 
@@ -791,7 +821,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             close()
             holder:Destroy()
             panel:Destroy()
-            scrim:Destroy()
         end
         return api
     end
@@ -814,7 +843,7 @@ local function NewCategory(parentColumn, opts, registerFlag)
     card.ClipsDescendants = true
     card.Parent = parentColumn
     Round(card, 8)
-    Stroke(card, Color3.new(1, 1, 1), 1, 0.9)
+    Stroke(card, Color3.new(1, 1, 1), 1, 0.9) -- faint outline so stacked cards read as separate boxes
 
     local accent = Instance.new("Frame")
     accent.BackgroundColor3 = Theme.Accent
@@ -832,7 +861,7 @@ local function NewCategory(parentColumn, opts, registerFlag)
     local title = Instance.new("TextLabel")
     title.BackgroundTransparency = 1
     title.Position = UDim2.new(0, 16, 0, 0)
-    title.Size = UDim2.new(1, -46, 0, 40)
+    title.Size = UDim2.new(1, -46, 0, 40) -- fixed to the header strip, not the whole (growing) card
     title.Font = Theme.FontBold
     title.TextSize = 14
     title.TextColor3 = Theme.Text
@@ -843,19 +872,22 @@ local function NewCategory(parentColumn, opts, registerFlag)
     local chevron = Instance.new("TextLabel")
     chevron.BackgroundTransparency = 1
     chevron.AnchorPoint = Vector2.new(1, 0.5)
-    chevron.Position = UDim2.new(1, -14, 0, 20)
+    chevron.Position = UDim2.new(1, -14, 0, 20) -- fixed to the header strip's vertical center, not the card's
     chevron.Size = UDim2.new(0, 16, 0, 16)
     chevron.Font = Theme.FontBold
     chevron.TextSize = 16
     chevron.TextColor3 = Theme.SubText
-    chevron.Text = ">"
-    chevron.Rotation = isOpen and 90 or 0
+    chevron.Text = ">" -- plain ASCII, rotated — fancy unicode chevrons render as boxes on Roblox's default fonts
+    chevron.Rotation = isOpen and 90 or 0 -- down when expanded, right-pointing when collapsed
     chevron.Parent = card
 
     local body = Instance.new("Frame")
     body.BackgroundTransparency = 1
     body.Position = UDim2.new(0, 16, 0, 46)
     body.Size = UDim2.new(1, -32, 0, 0)
+    -- Let Roblox drive body's real height off its UIListLayout instead of us
+    -- reading AbsoluteContentSize by hand — AutomaticSize is the value that's
+    -- guaranteed to be in sync with what's actually laid out.
     body.AutomaticSize = Enum.AutomaticSize.Y
     body.Parent = card
 
@@ -921,6 +953,8 @@ local function BuildCategoryPage(parentFrame, registerFlag)
         l.Parent = col
     end
 
+    -- if there's only ever one category, stretch it across the full width
+    -- instead of leaving an empty second column
     local categoryCount = 0
     local function updateSingleCategoryLayout()
         if categoryCount <= 1 then
@@ -933,12 +967,16 @@ local function BuildCategoryPage(parentFrame, registerFlag)
     end
     updateSingleCategoryLayout()
 
+    -- Auto-balance columns using our own running height total instead of
+    -- reading AbsoluteCanvasSize at call time — that property can lag a
+    -- frame behind the Instance.new() calls we just made, which was
+    -- causing every category to pile into the same column.
     local leftHeight, rightHeight = 0, 0
     local categoryLayoutOrder = 0
 
     function pageApi.new(catOptions)
         categoryCount = categoryCount + 1
-        updateSingleCategoryLayout()
+        updateSingleCategoryLayout() -- resize/reveal the column BEFORE parenting into it
 
         local targetCol = (leftHeight <= rightHeight) and leftCol or rightCol
         local category = NewCategory(targetCol, catOptions, registerFlag)
@@ -946,6 +984,9 @@ local function BuildCategoryPage(parentFrame, registerFlag)
         categoryLayoutOrder = categoryLayoutOrder + 1
         category.Instance.LayoutOrder = categoryLayoutOrder
 
+        -- Track this category's contribution to its column's total height as a
+        -- running delta, so leftHeight/rightHeight always reflect the sum of
+        -- every category in that column, not just the last one that resized.
         local lastKnownHeight = 40
         if targetCol == leftCol then leftHeight = leftHeight + lastKnownHeight
         else rightHeight = rightHeight + lastKnownHeight end
@@ -978,6 +1019,15 @@ function Library.new(options)
     local sizeX = options.width or 720
     local sizeY = options.height or 480
 
+    ------------------------------------------------------------------
+    -- Config save/load: any element created with an opts.flag registers
+    -- a getter/setter here, so SaveConfig/LoadConfig can capture or
+    -- restore the whole UI's state (every toggle, slider, dropdown,
+    -- textbox, and keybind you gave a flag to) in one call. Uses
+    -- writefile/readfile (present in script executors) — everything is
+    -- pcall-guarded so the UI still works fine in environments that
+    -- don't have them (e.g. Roblox Studio), just without persistence.
+    ------------------------------------------------------------------
     local flagRegistry = {}
     local function registerFlag(flag, getter, setter)
         if not flag then return end
@@ -994,6 +1044,9 @@ function Library.new(options)
         end)
     end
 
+    -- Captures the CURRENT state of every flagged element (whatever's
+    -- toggled on, every slider value, every dropdown selection, every
+    -- textbox and keybind) and writes it to <CONFIG_FOLDER>/<name>.json.
     function api.SaveConfig(name)
         if not (writefile and HttpService) or not name or name == "" then return false end
         local data = {}
@@ -1044,6 +1097,7 @@ function Library.new(options)
         return names
     end
 
+    -- outer glow wrapper
     local glow = Instance.new("Frame")
     glow.BackgroundTransparency = 1
     glow.Size = UDim2.new(0, sizeX, 0, sizeY)
@@ -1059,6 +1113,11 @@ function Library.new(options)
     Round(window, 12)
     Stroke(window, Theme.Accent, 1.5, 0.35)
 
+    ------------------------------------------------------------------
+    -- Header (logo + title/subtitle on the left, tab icons + avatar on
+    -- the right, all in one row — the tab bar lives in the topbar now,
+    -- right after the script's title/subtitle)
+    ------------------------------------------------------------------
     local header = Instance.new("Frame")
     header.Active = true
     header.BackgroundColor3 = Theme.Header
@@ -1103,6 +1162,8 @@ function Library.new(options)
     subtitleLabel.Text = options.subtitle or ""
     subtitleLabel.Parent = header
 
+    -- right-hand group: tab icon row, then the avatar chip, right-aligned
+    -- and vertically centered in the header
     local rightGroup = Instance.new("Frame")
     rightGroup.BackgroundTransparency = 1
     rightGroup.AnchorPoint = Vector2.new(1, 0.5)
@@ -1162,6 +1223,11 @@ function Library.new(options)
         end
     end)
 
+    ------------------------------------------------------------------
+    -- Pages container: one page per tab, each its own two-column
+    -- category layout (built with BuildCategoryPage above). Sits right
+    -- below the header now that the tab icons moved into the topbar.
+    ------------------------------------------------------------------
     local pagesContainer = Instance.new("Frame")
     pagesContainer.BackgroundTransparency = 1
     pagesContainer.Position = UDim2.new(0, 16, 0, 84)
@@ -1183,6 +1249,10 @@ function Library.new(options)
         end
     end
 
+    -- Create a new tab. opts.icon is a single glyph/emoji shown as a small
+    -- square icon button in the topbar (e.g. "👤" or "⚙"), opts.name is
+    -- used for the tooltip-ish text inside longer tab buttons if you pass
+    -- opts.wide = true.
     function api.Tab(opts)
         opts = opts or {}
 
@@ -1214,11 +1284,20 @@ function Library.new(options)
         return tabApi
     end
 
+    -- Fallback for simple, tab-less usage: window.new(...) works exactly like
+    -- before by silently creating a single default tab the first time it's called.
     function api.new(catOptions)
         if not tabs[1] then api.Tab({ icon = "≡" }) end
         return tabs[1].pageApi.new(catOptions)
     end
 
+    ------------------------------------------------------------------
+    -- Notifications: theme-matched toast cards that slide in from the
+    -- corner, stack, and auto-dismiss. Position defaults to top-right;
+    -- api.SetNotificationPosition("TopLeft"/"TopRight") flips it — this
+    -- is exposed through SettingsTab below so the user can change it,
+    -- and it's flag-registered so it saves/loads with configs too.
+    ------------------------------------------------------------------
     local notifPosition = "TopRight"
 
     local notifContainer = Instance.new("Frame")
@@ -1253,11 +1332,16 @@ function Library.new(options)
         return notifPosition
     end
 
+    -- api.Notify("just a message") or
+    -- api.Notify({ title = "Saved", text = "Config saved.", duration = 4 })
     function api.Notify(opts)
         if type(opts) == "string" then opts = { text = opts } end
         opts = opts or {}
         local duration = opts.duration or 4
 
+        -- the slot participates in the container's UIListLayout (so cards
+        -- stack correctly); the card inside it is free to animate its own
+        -- Position for the slide effect without the layout fighting it
         local slot = Instance.new("Frame")
         slot.BackgroundTransparency = 1
         slot.Size = UDim2.new(1, 0, 0, 0)
@@ -1326,6 +1410,7 @@ function Library.new(options)
         textLbl.Text = opts.text or ""
         textLbl.Parent = inner
 
+        -- slide in
         Tween(card, { Position = UDim2.new(0, 0, 0, 0) }, 0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
         task.delay(duration, function()
@@ -1336,6 +1421,12 @@ function Library.new(options)
         end)
     end
 
+    ------------------------------------------------------------------
+    -- Built-in Settings + Configs tab: menu keybind capture, unload
+    -- button, fade/animation sliders, notification position, and a
+    -- config selector wired to events you connect your own save/load
+    -- logic to (the built-in save/load already runs by default).
+    ------------------------------------------------------------------
     function api.SettingsTab(opts)
         opts = opts or {}
         local tab = api.Tab({ name = opts.name or "Settings", icon = opts.icon or "⚙" })
@@ -1378,6 +1469,11 @@ function Library.new(options)
             configDropdown.SetOptions(api.ListConfigs())
         end
 
+        -- Create + Save both write every flagged element's CURRENT value
+        -- (toggles, sliders, dropdowns, textboxes, keybinds — anything you
+        -- gave an opts.flag, including what's actually turned on right
+        -- now) to a config file. Create additionally picks up whatever
+        -- name was typed in the box and adds it to the list.
         createBtn.Event:Connect(function()
             local name = nameBox.Get()
             settingsApi.ConfigCreateEvent:Fire(name)
@@ -1418,7 +1514,7 @@ function Library.new(options)
                 local deletedName = configDropdown.Value
                 api.DeleteConfig(deletedName)
                 refreshDropdown()
-                configDropdown.Set(CONFIG_PLACEHOLDER, true)
+                configDropdown.Set(CONFIG_PLACEHOLDER, true) -- don't keep showing a name that no longer exists
                 api.Notify({ title = "Config", text = "Deleted \"" .. deletedName .. "\"." })
             else
                 api.Notify({ title = "Config", text = "Select a config first." })
@@ -1428,8 +1524,11 @@ function Library.new(options)
             settingsApi.ConfigRefreshEvent:Fire()
             refreshDropdown()
         end)
-        refreshDropdown()
+        refreshDropdown() -- populate with whatever configs already exist on disk
 
+        -- sensible defaults: the menu keybind actually toggles the window,
+        -- and Unload actually tears the UI down — override by disconnecting
+        -- and reconnecting your own handlers if you want different behavior
         keybind.Event:Connect(function(key) api.SetMenuKeybind(key) end)
         unloadBtn.Event:Connect(function() api.Destroy() end)
 
@@ -1441,6 +1540,9 @@ function Library.new(options)
         return settingsApi
     end
 
+    ------------------------------------------------------------------
+    -- Menu keybind (defaults to RightControl) — toggles the whole window
+    ------------------------------------------------------------------
     local menuKeyCode = Enum.KeyCode.RightControl
     UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
