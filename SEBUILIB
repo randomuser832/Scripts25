@@ -590,8 +590,9 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     function factory.Dropdown(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new() -- fires the selected option
-        api.Value = opts.default
+        api.Event = Signal.new() -- fires the selected option (or the full array, for multi-select)
+        local isMultiSelect = opts.multiSelect == true
+        api.Value = isMultiSelect and {} or opts.default
 
         local hasLabel = opts.text ~= nil
         local HEAD_HEIGHT = 34
@@ -724,6 +725,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         local optionButtons = {}
         local allOptions = {}
         local renderStepConn = nil
+        local selected = {} -- optionText -> true, only used when isMultiSelect
 
         local function positionPanel()
             local pos = head.AbsolutePosition
@@ -767,17 +769,68 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             currentOpenDropdownClose = close
         end
 
-        function api.Set(v, silent)
-            api.Value = v
-            head.Text = tostring(v)
-            if not silent then api.Event:Fire(v) end
+        -- Gives a selected option button its highlighted look, and keeps it
+        -- that way through hover (see the MouseEnter/MouseLeave guards below
+        -- that skip re-tinting a selected button back to its unselected color).
+        local function setOptionVisual(optBtn, isSelected)
+            optBtn.BackgroundColor3 = isSelected and Theme.Accent or Theme.PanelLight
+            optBtn.TextColor3 = isSelected and Color3.new(1, 1, 1) or Theme.SubText
         end
-        api.Set(opts.default or opts.placeholder or "...", true)
+
+        -- Recomputes api.Value (an ordered array of every currently-selected
+        -- option, in the same order as allOptions) and the head's summary
+        -- text — multi-select only.
+        local function refreshMultiSelectDisplay()
+            local arr = {}
+            for _, optionText in ipairs(allOptions) do
+                if selected[optionText] then table.insert(arr, optionText) end
+            end
+            api.Value = arr
+            if #arr == 0 then
+                head.Text = opts.placeholder or "..."
+            elseif #arr <= 2 then
+                head.Text = table.concat(arr, ", ")
+            else
+                head.Text = #arr .. " selected"
+            end
+        end
+
+        if isMultiSelect then
+            -- api.Set(values, silent) — values is an array of option strings
+            -- to mark as selected; anything not in the array is unmarked.
+            function api.Set(values, silent)
+                selected = {}
+                for _, v in ipairs(values or {}) do selected[v] = true end
+                for i, optBtn in ipairs(optionButtons) do
+                    setOptionVisual(optBtn, selected[allOptions[i]])
+                end
+                refreshMultiSelectDisplay()
+                if not silent then api.Event:Fire(api.Value) end
+            end
+            api.Set(opts.default or {}, true)
+        else
+            function api.Set(v, silent)
+                api.Value = v
+                head.Text = tostring(v)
+                if not silent then api.Event:Fire(v) end
+            end
+            api.Set(opts.default or opts.placeholder or "...", true)
+        end
 
         function api.SetOptions(options)
             for _, b in ipairs(optionButtons) do b:Destroy() end
             optionButtons = {}
             allOptions = options or {}
+
+            if isMultiSelect then
+                -- drop any selections that no longer exist in the new list
+                local stillValid = {}
+                for _, optionText in ipairs(allOptions) do
+                    if selected[optionText] then stillValid[optionText] = true end
+                end
+                selected = stillValid
+            end
+
             for i, optionText in ipairs(allOptions) do
                 local optBtn = Instance.new("TextButton")
                 optBtn.AutoButtonColor = false
@@ -794,14 +847,34 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
                 Round(optBtn, 5)
                 Pad(optBtn, 8)
 
-                optBtn.MouseEnter:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end)
-                optBtn.MouseLeave:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end)
-                optBtn.MouseButton1Click:Connect(function()
-                    api.Set(optionText)
-                    close()
-                end)
+                if isMultiSelect then
+                    setOptionVisual(optBtn, selected[optionText])
+                    optBtn.MouseEnter:Connect(function()
+                        if not selected[optionText] then Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end
+                    end)
+                    optBtn.MouseLeave:Connect(function()
+                        if not selected[optionText] then Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end
+                    end)
+                    optBtn.MouseButton1Click:Connect(function()
+                        selected[optionText] = (not selected[optionText]) or nil
+                        setOptionVisual(optBtn, selected[optionText])
+                        refreshMultiSelectDisplay()
+                        api.Event:Fire(api.Value)
+                        -- panel stays open — picking several options in a row
+                        -- is the whole point of multi-select
+                    end)
+                else
+                    optBtn.MouseEnter:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end)
+                    optBtn.MouseLeave:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end)
+                    optBtn.MouseButton1Click:Connect(function()
+                        api.Set(optionText)
+                        close()
+                    end)
+                end
                 table.insert(optionButtons, optBtn)
             end
+
+            if isMultiSelect then refreshMultiSelectDisplay() end
 
             local numOptions = #allOptions
             local contentHeight = numOptions > 0
