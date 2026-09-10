@@ -4,11 +4,11 @@
 
     This file only builds LAYOUT AND COMPONENTS (window, collapsible
     categories, toggles, textboxes, buttons, sliders, keybind rows,
-    dropdowns, a config save/load system, notifications, and a
-    local-player identity header).
+    dropdowns, a config save/load system, notifications, a theme
+    system, and a local-player identity header).
 
     It does not contain any game logic, remote calls, movement changes,
-    or anything else — every interactive element just exposes an
+    or anything else -- every interactive element just exposes an
     `.Event` you connect to. What you do inside that callback (in your
     own script, for your own game) is entirely up to you.
 ]]
@@ -34,21 +34,116 @@ ScreenGui.DisplayOrder = 100
 ScreenGui.Parent = CoreGui
 
 ------------------------------------------------------------------
--- Theme
+-- Themes
 ------------------------------------------------------------------
+-- Each preset only needs to define colors. Fonts stay fixed across
+-- themes so text never re-flows/re-sizes when you switch.
+
+local Themes = {
+    Purple = {
+        Background = Color3.fromRGB(18, 16, 24),
+        Panel      = Color3.fromRGB(24, 21, 32),
+        PanelLight = Color3.fromRGB(32, 28, 42),
+        Header     = Color3.fromRGB(20, 18, 27),
+        Accent     = Color3.fromRGB(168, 85, 247),
+        AccentDim  = Color3.fromRGB(120, 60, 180),
+        Text       = Color3.fromRGB(235, 233, 240),
+        SubText    = Color3.fromRGB(150, 146, 165),
+    },
+    Crimson = {
+        Background = Color3.fromRGB(20, 15, 16),
+        Panel      = Color3.fromRGB(27, 20, 21),
+        PanelLight = Color3.fromRGB(37, 27, 29),
+        Header     = Color3.fromRGB(22, 16, 17),
+        Accent     = Color3.fromRGB(239, 68, 68),
+        AccentDim  = Color3.fromRGB(170, 50, 50),
+        Text       = Color3.fromRGB(240, 233, 233),
+        SubText    = Color3.fromRGB(165, 148, 148),
+    },
+    Ocean = {
+        Background = Color3.fromRGB(13, 18, 24),
+        Panel      = Color3.fromRGB(18, 25, 33),
+        PanelLight = Color3.fromRGB(25, 34, 44),
+        Header     = Color3.fromRGB(15, 20, 27),
+        Accent     = Color3.fromRGB(56, 189, 248),
+        AccentDim  = Color3.fromRGB(40, 130, 175),
+        Text       = Color3.fromRGB(230, 240, 245),
+        SubText    = Color3.fromRGB(140, 160, 175),
+    },
+    Emerald = {
+        Background = Color3.fromRGB(14, 20, 17),
+        Panel      = Color3.fromRGB(19, 27, 23),
+        PanelLight = Color3.fromRGB(27, 37, 31),
+        Header     = Color3.fromRGB(16, 22, 19),
+        Accent     = Color3.fromRGB(52, 211, 153),
+        AccentDim  = Color3.fromRGB(38, 150, 110),
+        Text       = Color3.fromRGB(230, 240, 235),
+        SubText    = Color3.fromRGB(142, 165, 155),
+    },
+    Amber = {
+        Background = Color3.fromRGB(22, 18, 12),
+        Panel      = Color3.fromRGB(30, 24, 16),
+        PanelLight = Color3.fromRGB(41, 33, 21),
+        Header     = Color3.fromRGB(24, 19, 13),
+        Accent     = Color3.fromRGB(251, 146, 60),
+        AccentDim  = Color3.fromRGB(180, 105, 45),
+        Text       = Color3.fromRGB(243, 236, 227),
+        SubText    = Color3.fromRGB(170, 155, 135),
+    },
+    Monochrome = {
+        Background = Color3.fromRGB(17, 17, 17),
+        Panel      = Color3.fromRGB(24, 24, 24),
+        PanelLight = Color3.fromRGB(33, 33, 33),
+        Header     = Color3.fromRGB(19, 19, 19),
+        Accent     = Color3.fromRGB(220, 220, 220),
+        AccentDim  = Color3.fromRGB(150, 150, 150),
+        Text       = Color3.fromRGB(235, 235, 235),
+        SubText    = Color3.fromRGB(150, 150, 150),
+    },
+}
+
+local ThemeOrder = { "Purple", "Crimson", "Ocean", "Emerald", "Amber", "Monochrome" }
+
+local currentThemeName = "Purple"
 
 local Theme = {
-    Background = Color3.fromRGB(18, 16, 24),
-    Panel      = Color3.fromRGB(24, 21, 32),
-    PanelLight = Color3.fromRGB(32, 28, 42),
-    Header     = Color3.fromRGB(20, 18, 27),
-    Accent     = Color3.fromRGB(168, 85, 247),   -- purple
-    AccentDim  = Color3.fromRGB(120, 60, 180),
-    Text       = Color3.fromRGB(235, 233, 240),
-    SubText    = Color3.fromRGB(150, 146, 165),
-    Font       = Enum.Font.Gotham,
-    FontBold   = Enum.Font.GothamBold,
+    Font     = Enum.Font.Gotham,
+    FontBold = Enum.Font.GothamBold,
 }
+for k, v in pairs(Themes.Purple) do Theme[k] = v end
+
+-- Any element that wants to re-skin itself when the theme changes calls
+-- OnThemeChanged(fn) once at creation time. fn is called immediately (to
+-- apply the current theme) AND again every time SetTheme runs.
+local ThemeSubscribers = {}
+local function OnThemeChanged(fn)
+    table.insert(ThemeSubscribers, fn)
+    local ok, err = pcall(fn)
+    if not ok then warn("[SebsUI] theme apply error:", err) end
+end
+
+local ThemeChangedSignalHandlers = {} -- extra 1-arg callbacks fired with the theme name
+
+local function SetTheme(name)
+    local preset = Themes[name]
+    if not preset then return false end
+    currentThemeName = name
+    for k, v in pairs(preset) do Theme[k] = v end
+    for _, fn in ipairs(ThemeSubscribers) do
+        local ok, err = pcall(fn)
+        if not ok then warn("[SebsUI] theme apply error:", err) end
+    end
+    for _, fn in ipairs(ThemeChangedSignalHandlers) do
+        task.spawn(fn, name)
+    end
+    return true
+end
+
+local function GetThemeNames()
+    local names = {}
+    for _, n in ipairs(ThemeOrder) do table.insert(names, n) end
+    return names
+end
 
 ------------------------------------------------------------------
 -- Utilities
@@ -137,26 +232,18 @@ end
 -- (inset included), but GuiObject.AbsolutePosition is measured relative
 -- to the area BELOW Roblox's top inset bar (inset excluded) unless the
 -- ScreenGui has IgnoreGuiInset set. Comparing the two directly (as the
--- dropdown's click-away check does) is off by that inset amount — which
--- normally doesn't matter, but flips the boolean the wrong way for any
--- click landing within ~inset-height of a boundary, which is exactly
--- the kind of edge case a lower-positioned or flipped-open dropdown
--- panel is more likely to hit.
+-- dropdown's click-away check does) is off by that inset amount.
 local function getInsetAdjustedMouse()
     local mouse = UserInputService:GetMouseLocation()
     local topLeftInset = GuiService:GetGuiInset()
     return mouse - topLeftInset
 end
 
--- Only one dropdown's floating panel should ever be open at a time. Without
--- this, opening a second dropdown while a previous one was still open left
--- both floating panels visible and overlapping on screen — so a click could
--- land on the WRONG dropdown's buttons underneath. Holds the `close`
--- function of whichever dropdown is currently open, if any.
+-- Only one dropdown's floating panel should ever be open at a time.
 local currentOpenDropdownClose = nil
 
 ------------------------------------------------------------------
--- Element factory — populates a category's body with rows
+-- Element factory -- populates a category's body with rows
 ------------------------------------------------------------------
 
 local function NewElementFactory(container, onSizeChanged, registerFlag)
@@ -171,9 +258,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(onSizeChanged)
     end
 
-    -- Every element gets an increasing LayoutOrder so rows always stack in the
-    -- order you called them in, even if Roblox ties same-order instances in a
-    -- way you don't expect.
     local nextOrder = 0
     local function claimOrder(inst)
         nextOrder = nextOrder + 1
@@ -181,7 +265,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
-    -- Square checkbox + label (matches the reference screenshot style)
     function factory.Toggle(opts)
         opts = opts or {}
         local api = {}
@@ -208,7 +291,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         check.Font = Theme.FontBold
         check.TextSize = 12
         check.TextColor3 = Theme.Accent
-        check.Text = "✓"
+        check.Text = "check"
         check.TextTransparency = api.Value and 0 or 1
         check.Parent = box
 
@@ -245,7 +328,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         end
 
         clickArea.MouseButton1Click:Connect(function() api.Set(not api.Value) end)
-        render()
+        OnThemeChanged(render)
 
         if opts.flag and registerFlag then
             registerFlag(opts.flag, function() return api.Value end, function(v) api.Set(v, true) end)
@@ -257,12 +340,11 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
-    -- Toggle row + a "keybind" label on the right (e.g. "Modify WalkSpeed  None")
     function factory.KeybindToggle(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new()      -- fires (enabled)
-        api.BindEvent = Signal.new()  -- fires (keyName)
+        api.Event = Signal.new()
+        api.BindEvent = Signal.new()
         api.Value = not not opts.default
         api.Bind = opts.defaultBind or "None"
 
@@ -281,6 +363,8 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         bindBtn.Text = api.Bind
         bindBtn.TextXAlignment = Enum.TextXAlignment.Right
         bindBtn.Parent = toggle.Instance
+
+        OnThemeChanged(function() bindBtn.TextColor3 = Theme.SubText end)
 
         local listening = false
         bindBtn.MouseButton1Click:Connect(function()
@@ -322,6 +406,10 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         lbl.Parent = container
         claimOrder(lbl)
 
+        if not opts.color then
+            OnThemeChanged(function() lbl.TextColor3 = Theme.SubText end)
+        end
+
         local api = { Instance = lbl }
         function api.SetText(t) lbl.Text = t end
         function api.Destroy() lbl:Destroy() end
@@ -329,11 +417,10 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
-    -- A text field for freeform input (amounts, names, etc.)
     function factory.TextBox(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new() -- fires on Enter, passes text
+        api.Event = Signal.new()
         api.Text = ""
 
         local box = Instance.new("TextBox")
@@ -349,8 +436,14 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         box.Parent = container
         claimOrder(box)
         Round(box, 6)
-        Stroke(box)
+        local stroke = Stroke(box)
         Pad(box, 10)
+
+        OnThemeChanged(function()
+            box.BackgroundColor3 = Theme.PanelLight
+            box.TextColor3 = Theme.Text
+            box.PlaceholderColor3 = Theme.SubText
+        end)
 
         box:GetPropertyChangedSignal("Text"):Connect(function() api.Text = box.Text end)
         box.FocusLost:Connect(function(enterPressed)
@@ -388,6 +481,11 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(btn, 6)
         Stroke(btn)
 
+        OnThemeChanged(function()
+            btn.BackgroundColor3 = Theme.PanelLight
+            btn.TextColor3 = Theme.SubText
+        end)
+
         btn.MouseEnter:Connect(function() Tween(btn, { BackgroundColor3 = Theme.Accent, TextColor3 = Color3.new(1,1,1) }, 0.12) end)
         btn.MouseLeave:Connect(function() Tween(btn, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.SubText }, 0.12) end)
         btn.MouseButton1Click:Connect(function() api.Event:Fire() end)
@@ -399,7 +497,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
-    -- Slider with a percentage/number readout, matching the reference bars
     function factory.Slider(opts)
         opts = opts or {}
         local api = {}
@@ -475,13 +572,21 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             end
         end
 
+        local function applyTheme()
+            label.TextColor3 = Theme.SubText
+            valueLabel.TextColor3 = Theme.Text
+            track.BackgroundColor3 = Theme.PanelLight
+            if not opts.color then fill.BackgroundColor3 = Theme.Accent end
+            render()
+        end
+
         function api.Set(v, silent)
             v = math.clamp(v, min, max)
             api.Value = v
             render()
             if not silent then api.Event:Fire(api.Value) end
         end
-        render()
+        OnThemeChanged(applyTheme)
 
         local dragging = false
         local function updateFromInput(input)
@@ -516,12 +621,10 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
-    -- A standalone "click to rebind" row (label + current key on the right).
-    -- Generic — useful for a menu-toggle keybind, an action keybind, etc.
     function factory.Keybind(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new() -- fires the new key name after a rebind
+        api.Event = Signal.new()
         api.Value = opts.default or "None"
 
         local row = Instance.new("Frame")
@@ -551,6 +654,11 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         bindBtn.Text = api.Value
         bindBtn.TextXAlignment = Enum.TextXAlignment.Right
         bindBtn.Parent = row
+
+        OnThemeChanged(function()
+            label.TextColor3 = Theme.SubText
+            bindBtn.TextColor3 = Theme.SubText
+        end)
 
         local listening = false
         bindBtn.MouseButton1Click:Connect(function()
@@ -582,17 +690,11 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
     end
 
     ------------------------------------------------------------------
-    -- Dropdown. The option list is a FLOATING panel parented to the top
-    -- ScreenGui layer (not the category body), so opening it never grows
-    -- or reflows the category it lives in and never overlaps sibling
-    -- rows or a different category's content — it just floats above
-    -- everything, like a native dropdown, and closes on an outside click.
     function factory.Dropdown(opts)
         opts = opts or {}
         local api = {}
-        api.Event = Signal.new() -- fires the selected option (or the full array, for multi-select)
-        local isMultiSelect = opts.multiSelect == true
-        api.Value = isMultiSelect and {} or opts.default
+        api.Event = Signal.new()
+        api.Value = opts.default
 
         local hasLabel = opts.text ~= nil
         local HEAD_HEIGHT = 34
@@ -606,8 +708,9 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         holder.Parent = container
         claimOrder(holder)
 
+        local label
         if hasLabel then
-            local label = Instance.new("TextLabel")
+            label = Instance.new("TextLabel")
             label.BackgroundTransparency = 1
             label.Size = UDim2.new(1, 0, 0, LABEL_HEIGHT)
             label.Font = Theme.Font
@@ -629,7 +732,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         head.TextXAlignment = Enum.TextXAlignment.Left
         head.Parent = holder
         Round(head, 6)
-        Stroke(head)
+        local headStroke = Stroke(head)
         Pad(head, 10)
 
         local chevron = Instance.new("TextLabel")
@@ -640,13 +743,10 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         chevron.Font = Theme.FontBold
         chevron.TextSize = 14
         chevron.TextColor3 = Theme.SubText
-        chevron.Text = ">" -- plain ASCII, rotated — fancy unicode chevrons render as
-        chevron.Rotation = 0 -- boxes/tofu on Roblox's default fonts, so we rotate a safe glyph instead
+        chevron.Text = ">"
+        chevron.Rotation = 0
         chevron.Parent = head
 
-        -- floating panel — sibling of the window, not a child of the category,
-        -- so it renders above EVERYTHING (other categories, other tabs, etc.)
-        -- and never affects anyone else's layout
         local panel = Instance.new("Frame")
         panel.Visible = false
         panel.BackgroundColor3 = Theme.Panel
@@ -656,15 +756,8 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         panel.ZIndex = 500
         panel.Parent = ScreenGui
         Round(panel, 8)
-        Stroke(panel, Theme.Accent, 1, 0.5)
+        local panelStroke = Stroke(panel, Theme.Accent, 1, 0.5)
 
-        -- A real UIListLayout + UIPadding drives panel's height here, instead
-        -- of hand-placed children — that's what guarantees a correct, real
-        -- gap below the last row. (The previous "bottomSpacer" frame was
-        -- positioned at the panel's top-left by default, contributing zero
-        -- actual bottom padding, so the list's last row sat flush against
-        -- the panel's clipped edge — which is exactly what made the bottom
-        -- row(s) unreliable to click.)
         local panelLayout = Instance.new("UIListLayout")
         panelLayout.SortOrder = Enum.SortOrder.LayoutOrder
         panelLayout.Padding = UDim.new(0, 8)
@@ -687,16 +780,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(searchBox, 6)
         Pad(searchBox, 8)
 
-        -- Fixed max height instead of AutomaticSize — a ScrollingFrame
-        -- that auto-sizes to its content never has anything to scroll,
-        -- since it just grows to fit everything. Capping the height here
-        -- is what makes the mouse wheel actually do something once there
-        -- are more options than fit — and there's no upper limit on how
-        -- many options you can pass in (20 player names, a full item
-        -- list, whatever); it just scrolls/searches past whatever doesn't
-        -- fit in maxVisibleRows. Defaults to 6 rows; pass a bigger
-        -- opts.maxVisibleRows for something like a player-name dropdown
-        -- where you want more visible at once before scrolling kicks in.
         local ROW_HEIGHT = 30
         local ROW_PADDING = 4
         local maxVisibleRows = opts.maxVisibleRows or 6
@@ -725,7 +808,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         local optionButtons = {}
         local allOptions = {}
         local renderStepConn = nil
-        local selected = {} -- optionText -> true, only used when isMultiSelect
 
         local function positionPanel()
             local pos = head.AbsolutePosition
@@ -733,8 +815,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             local screenSize = ScreenGui.AbsoluteSize
             local panelHeight = panel.AbsoluteSize.Y
             local y = pos.Y + size.Y + 6
-            -- flip above the button if there isn't room below, so it never
-            -- gets clipped off the bottom of the screen
             if y + panelHeight > screenSize.Y and pos.Y - panelHeight - 6 > 0 then
                 y = pos.Y - panelHeight - 6
             end
@@ -754,7 +834,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         local function open()
             if isOpen then return end
             if currentOpenDropdownClose and currentOpenDropdownClose ~= close then
-                currentOpenDropdownClose() -- close whichever other dropdown was open
+                currentOpenDropdownClose()
             end
             isOpen = true
             searchBox.Text = ""
@@ -763,74 +843,21 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             panel.Visible = true
             BringToFront(panel)
             Tween(chevron, { Rotation = 90 }, 0.1)
-            -- keep the panel glued under the button if the window is dragged
-            -- while the dropdown is open
             renderStepConn = RunService.RenderStepped:Connect(positionPanel)
             currentOpenDropdownClose = close
         end
 
-        -- Gives a selected option button its highlighted look, and keeps it
-        -- that way through hover (see the MouseEnter/MouseLeave guards below
-        -- that skip re-tinting a selected button back to its unselected color).
-        local function setOptionVisual(optBtn, isSelected)
-            optBtn.BackgroundColor3 = isSelected and Theme.Accent or Theme.PanelLight
-            optBtn.TextColor3 = isSelected and Color3.new(1, 1, 1) or Theme.SubText
+        function api.Set(v, silent)
+            api.Value = v
+            head.Text = tostring(v)
+            if not silent then api.Event:Fire(v) end
         end
-
-        -- Recomputes api.Value (an ordered array of every currently-selected
-        -- option, in the same order as allOptions) and the head's summary
-        -- text — multi-select only.
-        local function refreshMultiSelectDisplay()
-            local arr = {}
-            for _, optionText in ipairs(allOptions) do
-                if selected[optionText] then table.insert(arr, optionText) end
-            end
-            api.Value = arr
-            if #arr == 0 then
-                head.Text = opts.placeholder or "..."
-            elseif #arr <= 2 then
-                head.Text = table.concat(arr, ", ")
-            else
-                head.Text = #arr .. " selected"
-            end
-        end
-
-        if isMultiSelect then
-            -- api.Set(values, silent) — values is an array of option strings
-            -- to mark as selected; anything not in the array is unmarked.
-            function api.Set(values, silent)
-                selected = {}
-                for _, v in ipairs(values or {}) do selected[v] = true end
-                for i, optBtn in ipairs(optionButtons) do
-                    setOptionVisual(optBtn, selected[allOptions[i]])
-                end
-                refreshMultiSelectDisplay()
-                if not silent then api.Event:Fire(api.Value) end
-            end
-            api.Set(opts.default or {}, true)
-        else
-            function api.Set(v, silent)
-                api.Value = v
-                head.Text = tostring(v)
-                if not silent then api.Event:Fire(v) end
-            end
-            api.Set(opts.default or opts.placeholder or "...", true)
-        end
+        api.Set(opts.default or opts.placeholder or "...", true)
 
         function api.SetOptions(options)
             for _, b in ipairs(optionButtons) do b:Destroy() end
             optionButtons = {}
             allOptions = options or {}
-
-            if isMultiSelect then
-                -- drop any selections that no longer exist in the new list
-                local stillValid = {}
-                for _, optionText in ipairs(allOptions) do
-                    if selected[optionText] then stillValid[optionText] = true end
-                end
-                selected = stillValid
-            end
-
             for i, optionText in ipairs(allOptions) do
                 local optBtn = Instance.new("TextButton")
                 optBtn.AutoButtonColor = false
@@ -847,34 +874,14 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
                 Round(optBtn, 5)
                 Pad(optBtn, 8)
 
-                if isMultiSelect then
-                    setOptionVisual(optBtn, selected[optionText])
-                    optBtn.MouseEnter:Connect(function()
-                        if not selected[optionText] then Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end
-                    end)
-                    optBtn.MouseLeave:Connect(function()
-                        if not selected[optionText] then Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end
-                    end)
-                    optBtn.MouseButton1Click:Connect(function()
-                        selected[optionText] = (not selected[optionText]) or nil
-                        setOptionVisual(optBtn, selected[optionText])
-                        refreshMultiSelectDisplay()
-                        api.Event:Fire(api.Value)
-                        -- panel stays open — picking several options in a row
-                        -- is the whole point of multi-select
-                    end)
-                else
-                    optBtn.MouseEnter:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end)
-                    optBtn.MouseLeave:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end)
-                    optBtn.MouseButton1Click:Connect(function()
-                        api.Set(optionText)
-                        close()
-                    end)
-                end
+                optBtn.MouseEnter:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end)
+                optBtn.MouseLeave:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end)
+                optBtn.MouseButton1Click:Connect(function()
+                    api.Set(optionText)
+                    close()
+                end)
                 table.insert(optionButtons, optBtn)
             end
-
-            if isMultiSelect then refreshMultiSelectDisplay() end
 
             local numOptions = #allOptions
             local contentHeight = numOptions > 0
@@ -895,7 +902,6 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             if isOpen then close() else open() end
         end)
 
-        -- click-away-to-close: any click outside the head or the panel closes it
         UserInputService.InputBegan:Connect(function(input, gpe)
             if not isOpen then return end
             if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -912,6 +918,23 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         end)
 
         api.SetOptions(opts.options or {})
+
+        OnThemeChanged(function()
+            if label then label.TextColor3 = Theme.SubText end
+            head.BackgroundColor3 = Theme.PanelLight
+            head.TextColor3 = Theme.Text
+            chevron.TextColor3 = Theme.SubText
+            panel.BackgroundColor3 = Theme.Panel
+            panelStroke.Color = Theme.Accent
+            searchBox.BackgroundColor3 = Theme.PanelLight
+            searchBox.TextColor3 = Theme.Text
+            searchBox.PlaceholderColor3 = Theme.SubText
+            list.ScrollBarImageColor3 = Theme.Accent
+            for _, optBtn in ipairs(optionButtons) do
+                optBtn.BackgroundColor3 = Theme.PanelLight
+                optBtn.TextColor3 = Theme.SubText
+            end
+        end)
 
         if opts.flag and registerFlag then
             registerFlag(opts.flag, function() return api.Value end, function(v) api.Set(v, true) end)
@@ -944,7 +967,7 @@ local function NewCategory(parentColumn, opts, registerFlag)
     card.ClipsDescendants = true
     card.Parent = parentColumn
     Round(card, 8)
-    Stroke(card, Color3.new(1, 1, 1), 1, 0.9) -- faint outline so stacked cards read as separate boxes
+    Stroke(card, Color3.new(1, 1, 1), 1, 0.9)
 
     local accent = Instance.new("Frame")
     accent.BackgroundColor3 = Theme.Accent
@@ -962,7 +985,7 @@ local function NewCategory(parentColumn, opts, registerFlag)
     local title = Instance.new("TextLabel")
     title.BackgroundTransparency = 1
     title.Position = UDim2.new(0, 16, 0, 0)
-    title.Size = UDim2.new(1, -46, 0, 40) -- fixed to the header strip, not the whole (growing) card
+    title.Size = UDim2.new(1, -46, 0, 40)
     title.Font = Theme.FontBold
     title.TextSize = 14
     title.TextColor3 = Theme.Text
@@ -973,22 +996,26 @@ local function NewCategory(parentColumn, opts, registerFlag)
     local chevron = Instance.new("TextLabel")
     chevron.BackgroundTransparency = 1
     chevron.AnchorPoint = Vector2.new(1, 0.5)
-    chevron.Position = UDim2.new(1, -14, 0, 20) -- fixed to the header strip's vertical center, not the card's
+    chevron.Position = UDim2.new(1, -14, 0, 20)
     chevron.Size = UDim2.new(0, 16, 0, 16)
     chevron.Font = Theme.FontBold
     chevron.TextSize = 16
     chevron.TextColor3 = Theme.SubText
-    chevron.Text = ">" -- plain ASCII, rotated — fancy unicode chevrons render as boxes on Roblox's default fonts
-    chevron.Rotation = isOpen and 90 or 0 -- down when expanded, right-pointing when collapsed
+    chevron.Text = ">"
+    chevron.Rotation = isOpen and 90 or 0
     chevron.Parent = card
+
+    OnThemeChanged(function()
+        card.BackgroundColor3 = Theme.Panel
+        accent.BackgroundColor3 = Theme.Accent
+        title.TextColor3 = Theme.Text
+        chevron.TextColor3 = Theme.SubText
+    end)
 
     local body = Instance.new("Frame")
     body.BackgroundTransparency = 1
     body.Position = UDim2.new(0, 16, 0, 46)
     body.Size = UDim2.new(1, -32, 0, 0)
-    -- Let Roblox drive body's real height off its UIListLayout instead of us
-    -- reading AbsoluteContentSize by hand — AutomaticSize is the value that's
-    -- guaranteed to be in sync with what's actually laid out.
     body.AutomaticSize = Enum.AutomaticSize.Y
     body.Parent = card
 
@@ -1019,7 +1046,7 @@ local function NewCategory(parentColumn, opts, registerFlag)
 end
 
 ------------------------------------------------------------------
--- Two-column, auto-balancing category layout — used once per tab page
+-- Two-column, auto-balancing category layout -- used once per tab page
 ------------------------------------------------------------------
 
 local function BuildCategoryPage(parentFrame, registerFlag)
@@ -1047,6 +1074,11 @@ local function BuildCategoryPage(parentFrame, registerFlag)
     rightCol.ScrollBarImageColor3 = Theme.Accent
     rightCol.Parent = parentFrame
 
+    OnThemeChanged(function()
+        leftCol.ScrollBarImageColor3 = Theme.Accent
+        rightCol.ScrollBarImageColor3 = Theme.Accent
+    end)
+
     for _, col in ipairs({ leftCol, rightCol }) do
         local l = Instance.new("UIListLayout")
         l.SortOrder = Enum.SortOrder.LayoutOrder
@@ -1054,8 +1086,6 @@ local function BuildCategoryPage(parentFrame, registerFlag)
         l.Parent = col
     end
 
-    -- if there's only ever one category, stretch it across the full width
-    -- instead of leaving an empty second column
     local categoryCount = 0
     local function updateSingleCategoryLayout()
         if categoryCount <= 1 then
@@ -1068,16 +1098,12 @@ local function BuildCategoryPage(parentFrame, registerFlag)
     end
     updateSingleCategoryLayout()
 
-    -- Auto-balance columns using our own running height total instead of
-    -- reading AbsoluteCanvasSize at call time — that property can lag a
-    -- frame behind the Instance.new() calls we just made, which was
-    -- causing every category to pile into the same column.
     local leftHeight, rightHeight = 0, 0
     local categoryLayoutOrder = 0
 
     function pageApi.new(catOptions)
         categoryCount = categoryCount + 1
-        updateSingleCategoryLayout() -- resize/reveal the column BEFORE parenting into it
+        updateSingleCategoryLayout()
 
         local targetCol = (leftHeight <= rightHeight) and leftCol or rightCol
         local category = NewCategory(targetCol, catOptions, registerFlag)
@@ -1085,9 +1111,6 @@ local function BuildCategoryPage(parentFrame, registerFlag)
         categoryLayoutOrder = categoryLayoutOrder + 1
         category.Instance.LayoutOrder = categoryLayoutOrder
 
-        -- Track this category's contribution to its column's total height as a
-        -- running delta, so leftHeight/rightHeight always reflect the sum of
-        -- every category in that column, not just the last one that resized.
         local lastKnownHeight = 40
         if targetCol == leftCol then leftHeight = leftHeight + lastKnownHeight
         else rightHeight = rightHeight + lastKnownHeight end
@@ -1120,15 +1143,6 @@ function Library.new(options)
     local sizeX = options.width or 720
     local sizeY = options.height or 480
 
-    ------------------------------------------------------------------
-    -- Config save/load: any element created with an opts.flag registers
-    -- a getter/setter here, so SaveConfig/LoadConfig can capture or
-    -- restore the whole UI's state (every toggle, slider, dropdown,
-    -- textbox, and keybind you gave a flag to) in one call. Uses
-    -- writefile/readfile (present in script executors) — everything is
-    -- pcall-guarded so the UI still works fine in environments that
-    -- don't have them (e.g. Roblox Studio), just without persistence.
-    ------------------------------------------------------------------
     local flagRegistry = {}
     local function registerFlag(flag, getter, setter)
         if not flag then return end
@@ -1145,9 +1159,6 @@ function Library.new(options)
         end)
     end
 
-    -- Captures the CURRENT state of every flagged element (whatever's
-    -- toggled on, every slider value, every dropdown selection, every
-    -- textbox and keybind) and writes it to <CONFIG_FOLDER>/<name>.json.
     function api.SaveConfig(name)
         if not (writefile and HttpService) or not name or name == "" then return false end
         local data = {}
@@ -1198,7 +1209,13 @@ function Library.new(options)
         return names
     end
 
-    -- outer glow wrapper
+    -- Theme API exposed on the window (in addition to the Settings tab dropdown)
+    function api.SetTheme(name) return SetTheme(name) end
+    function api.GetTheme() return currentThemeName end
+    function api.GetThemeNames() return GetThemeNames() end
+    function api.OnThemeChanged(fn) table.insert(ThemeChangedSignalHandlers, fn) end
+    registerFlag("__SebsUITheme", function() return currentThemeName end, function(v) SetTheme(v) end)
+
     local glow = Instance.new("Frame")
     glow.BackgroundTransparency = 1
     glow.Size = UDim2.new(0, sizeX, 0, sizeY)
@@ -1212,13 +1229,8 @@ function Library.new(options)
     window.ClipsDescendants = true
     window.Parent = glow
     Round(window, 12)
-    Stroke(window, Theme.Accent, 1.5, 0.35)
+    local windowStroke = Stroke(window, Theme.Accent, 1.5, 0.35)
 
-    ------------------------------------------------------------------
-    -- Header (logo + title/subtitle on the left, tab icons + avatar on
-    -- the right, all in one row — the tab bar lives in the topbar now,
-    -- right after the script's title/subtitle)
-    ------------------------------------------------------------------
     local header = Instance.new("Frame")
     header.Active = true
     header.BackgroundColor3 = Theme.Header
@@ -1263,8 +1275,6 @@ function Library.new(options)
     subtitleLabel.Text = options.subtitle or ""
     subtitleLabel.Parent = header
 
-    -- right-hand group: tab icon row, then the avatar chip, right-aligned
-    -- and vertically centered in the header
     local rightGroup = Instance.new("Frame")
     rightGroup.BackgroundTransparency = 1
     rightGroup.AnchorPoint = Vector2.new(1, 0.5)
@@ -1324,11 +1334,6 @@ function Library.new(options)
         end
     end)
 
-    ------------------------------------------------------------------
-    -- Pages container: one page per tab, each its own two-column
-    -- category layout (built with BuildCategoryPage above). Sits right
-    -- below the header now that the tab icons moved into the topbar.
-    ------------------------------------------------------------------
     local pagesContainer = Instance.new("Frame")
     pagesContainer.BackgroundTransparency = 1
     pagesContainer.Position = UDim2.new(0, 16, 0, 84)
@@ -1350,10 +1355,6 @@ function Library.new(options)
         end
     end
 
-    -- Create a new tab. opts.icon is a single glyph/emoji shown as a small
-    -- square icon button in the topbar (e.g. "👤" or "⚙"), opts.name is
-    -- used for the tooltip-ish text inside longer tab buttons if you pass
-    -- opts.wide = true.
     function api.Tab(opts)
         opts = opts or {}
 
@@ -1370,7 +1371,7 @@ function Library.new(options)
         btn.Font = Theme.FontBold
         btn.TextSize = 16
         btn.TextColor3 = Theme.SubText
-        btn.Text = opts.wide and ((opts.icon and (opts.icon .. "  ") or "") .. (opts.name or "Tab")) or (opts.icon or "•")
+        btn.Text = opts.wide and ((opts.icon and (opts.icon .. "  ") or "") .. (opts.name or "Tab")) or (opts.icon or "*")
         btn.Parent = tabBar
         Round(btn, 10)
 
@@ -1385,20 +1386,23 @@ function Library.new(options)
         return tabApi
     end
 
-    -- Fallback for simple, tab-less usage: window.new(...) works exactly like
-    -- before by silently creating a single default tab the first time it's called.
     function api.new(catOptions)
-        if not tabs[1] then api.Tab({ icon = "≡" }) end
+        if not tabs[1] then api.Tab({ icon = "=" }) end
         return tabs[1].pageApi.new(catOptions)
     end
 
-    ------------------------------------------------------------------
-    -- Notifications: theme-matched toast cards that slide in from the
-    -- corner, stack, and auto-dismiss. Position defaults to top-right;
-    -- api.SetNotificationPosition("TopLeft"/"TopRight") flips it — this
-    -- is exposed through SettingsTab below so the user can change it,
-    -- and it's flag-registered so it saves/loads with configs too.
-    ------------------------------------------------------------------
+    -- Re-skin the whole window chrome (background/header/logo/text/tab
+    -- bar/border) whenever the theme changes.
+    OnThemeChanged(function()
+        window.BackgroundColor3 = Theme.Background
+        windowStroke.Color = Theme.Accent
+        header.BackgroundColor3 = Theme.Header
+        logo.BackgroundColor3 = Theme.Accent
+        titleLabel.TextColor3 = Theme.Text
+        subtitleLabel.TextColor3 = Theme.SubText
+        if selectedTab then selectTab(selectedTab) end
+    end)
+
     local notifPosition = "TopRight"
 
     local notifContainer = Instance.new("Frame")
@@ -1433,16 +1437,11 @@ function Library.new(options)
         return notifPosition
     end
 
-    -- api.Notify("just a message") or
-    -- api.Notify({ title = "Saved", text = "Config saved.", duration = 4 })
     function api.Notify(opts)
         if type(opts) == "string" then opts = { text = opts } end
         opts = opts or {}
         local duration = opts.duration or 4
 
-        -- the slot participates in the container's UIListLayout (so cards
-        -- stack correctly); the card inside it is free to animate its own
-        -- Position for the slide effect without the layout fighting it
         local slot = Instance.new("Frame")
         slot.BackgroundTransparency = 1
         slot.Size = UDim2.new(1, 0, 0, 0)
@@ -1511,7 +1510,6 @@ function Library.new(options)
         textLbl.Text = opts.text or ""
         textLbl.Parent = inner
 
-        -- slide in
         Tween(card, { Position = UDim2.new(0, 0, 0, 0) }, 0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
         task.delay(duration, function()
@@ -1522,15 +1520,9 @@ function Library.new(options)
         end)
     end
 
-    ------------------------------------------------------------------
-    -- Built-in Settings + Configs tab: menu keybind capture, unload
-    -- button, fade/animation sliders, notification position, and a
-    -- config selector wired to events you connect your own save/load
-    -- logic to (the built-in save/load already runs by default).
-    ------------------------------------------------------------------
     function api.SettingsTab(opts)
         opts = opts or {}
-        local tab = api.Tab({ name = opts.name or "Settings", icon = opts.icon or "⚙" })
+        local tab = api.Tab({ name = opts.name or "Settings", icon = opts.icon or "gear" })
 
         local settingsCat = tab.new({ text = "Settings" })
         local keybind = settingsCat.Keybind({ text = "Menu Keybind", default = opts.keybind or "RightControl" })
@@ -1544,6 +1536,17 @@ function Library.new(options)
             flag = "NotificationPosition",
         })
         notifPosDropdown.Event:Connect(function(value) api.SetNotificationPosition(value) end)
+
+        -- Theme picker: switches every currently-built element's colors
+        -- live (nothing needs to be recreated) and saves/loads with configs
+        -- via the "__SebsUITheme" flag registered above.
+        local themeDropdown = settingsCat.Dropdown({
+            text = "Theme",
+            options = GetThemeNames(),
+            default = currentThemeName,
+        })
+        themeDropdown.Event:Connect(function(value) api.SetTheme(value) end)
+        api.OnThemeChanged(function(name) themeDropdown.Set(name, true) end)
 
         local configsCat = tab.new({ text = "Configs" })
         local configDropdown = configsCat.Dropdown({ options = opts.configs or {}, placeholder = "..." })
@@ -1560,6 +1563,7 @@ function Library.new(options)
         settingsApi.FadeTimeEvent = fadeSlider.Event
         settingsApi.AnimationSpeedEvent = animSlider.Event
         settingsApi.NotificationPositionEvent = notifPosDropdown.Event
+        settingsApi.ThemeEvent = themeDropdown.Event
         settingsApi.ConfigCreateEvent = Signal.new()
         settingsApi.ConfigLoadEvent = Signal.new()
         settingsApi.ConfigSaveEvent = Signal.new()
@@ -1570,11 +1574,6 @@ function Library.new(options)
             configDropdown.SetOptions(api.ListConfigs())
         end
 
-        -- Create + Save both write every flagged element's CURRENT value
-        -- (toggles, sliders, dropdowns, textboxes, keybinds — anything you
-        -- gave an opts.flag, including what's actually turned on right
-        -- now) to a config file. Create additionally picks up whatever
-        -- name was typed in the box and adds it to the list.
         createBtn.Event:Connect(function()
             local name = nameBox.Get()
             settingsApi.ConfigCreateEvent:Fire(name)
@@ -1615,7 +1614,7 @@ function Library.new(options)
                 local deletedName = configDropdown.Value
                 api.DeleteConfig(deletedName)
                 refreshDropdown()
-                configDropdown.Set(CONFIG_PLACEHOLDER, true) -- don't keep showing a name that no longer exists
+                configDropdown.Set(CONFIG_PLACEHOLDER, true)
                 api.Notify({ title = "Config", text = "Deleted \"" .. deletedName .. "\"." })
             else
                 api.Notify({ title = "Config", text = "Select a config first." })
@@ -1625,11 +1624,8 @@ function Library.new(options)
             settingsApi.ConfigRefreshEvent:Fire()
             refreshDropdown()
         end)
-        refreshDropdown() -- populate with whatever configs already exist on disk
+        refreshDropdown()
 
-        -- sensible defaults: the menu keybind actually toggles the window,
-        -- and Unload actually tears the UI down — override by disconnecting
-        -- and reconnecting your own handlers if you want different behavior
         keybind.Event:Connect(function(key) api.SetMenuKeybind(key) end)
         unloadBtn.Event:Connect(function() api.Destroy() end)
 
@@ -1638,12 +1634,10 @@ function Library.new(options)
         settingsApi.MenuKeybind = keybind
         settingsApi.ConfigDropdown = configDropdown
         settingsApi.NotificationPositionDropdown = notifPosDropdown
+        settingsApi.ThemeDropdown = themeDropdown
         return settingsApi
     end
 
-    ------------------------------------------------------------------
-    -- Menu keybind (defaults to RightControl) — toggles the whole window
-    ------------------------------------------------------------------
     local menuKeyCode = Enum.KeyCode.RightControl
     UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
