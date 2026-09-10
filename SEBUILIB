@@ -18,6 +18,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local Players          = game:GetService("Players")
 local CoreGui          = game:GetService("CoreGui")
+local GuiService       = game:GetService("GuiService")
 local HttpService      = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
@@ -130,6 +131,21 @@ local topZ = 10
 local function BringToFront(frame)
     topZ = topZ + 1
     frame.ZIndex = topZ
+end
+
+-- UserInputService:GetMouseLocation() returns the RAW screen position
+-- (inset included), but GuiObject.AbsolutePosition is measured relative
+-- to the area BELOW Roblox's top inset bar (inset excluded) unless the
+-- ScreenGui has IgnoreGuiInset set. Comparing the two directly (as the
+-- dropdown's click-away check does) is off by that inset amount — which
+-- normally doesn't matter, but flips the boolean the wrong way for any
+-- click landing within ~inset-height of a boundary, which is exactly
+-- the kind of edge case a lower-positioned or flipped-open dropdown
+-- panel is more likely to hit.
+local function getInsetAdjustedMouse()
+    local mouse = UserInputService:GetMouseLocation()
+    local topLeftInset = GuiService:GetGuiInset()
+    return mouse - topLeftInset
 end
 
 -- Only one dropdown's floating panel should ever be open at a time. Without
@@ -811,7 +827,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             if not isOpen then return end
             if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
             task.defer(function()
-                local mouse = UserInputService:GetMouseLocation()
+                local mouse = getInsetAdjustedMouse()
                 local overHead = mouse.X >= head.AbsolutePosition.X and mouse.X <= head.AbsolutePosition.X + head.AbsoluteSize.X
                     and mouse.Y >= head.AbsolutePosition.Y and mouse.Y <= head.AbsolutePosition.Y + head.AbsoluteSize.Y
                 local overPanel = mouse.X >= panel.AbsolutePosition.X and mouse.X <= panel.AbsolutePosition.X + panel.AbsoluteSize.X
