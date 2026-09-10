@@ -132,6 +132,13 @@ local function BringToFront(frame)
     frame.ZIndex = topZ
 end
 
+-- Only one dropdown's floating panel should ever be open at a time. Without
+-- this, opening a second dropdown while a previous one was still open left
+-- both floating panels visible and overlapping on screen — so a click could
+-- land on the WRONG dropdown's buttons underneath. Holds the `close`
+-- function of whichever dropdown is currently open, if any.
+local currentOpenDropdownClose = nil
+
 ------------------------------------------------------------------
 -- Element factory — populates a category's body with rows
 ------------------------------------------------------------------
@@ -723,10 +730,14 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             panel.Visible = false
             Tween(chevron, { Rotation = 0 }, 0.1)
             if renderStepConn then renderStepConn:Disconnect(); renderStepConn = nil end
+            if currentOpenDropdownClose == close then currentOpenDropdownClose = nil end
         end
 
         local function open()
             if isOpen then return end
+            if currentOpenDropdownClose and currentOpenDropdownClose ~= close then
+                currentOpenDropdownClose() -- close whichever other dropdown was open
+            end
             isOpen = true
             searchBox.Text = ""
             for _, b in ipairs(optionButtons) do b.Visible = true end
@@ -737,6 +748,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
             -- keep the panel glued under the button if the window is dragged
             -- while the dropdown is open
             renderStepConn = RunService.RenderStepped:Connect(positionPanel)
+            currentOpenDropdownClose = close
         end
 
         function api.Set(v, silent)
