@@ -37,6 +37,14 @@ ScreenGui.Parent = CoreGui
 -- Theme
 ------------------------------------------------------------------
 
+-- Text/SubText are intentionally the SAME two colors on every preset below.
+-- Switching themes is meant to repaint backgrounds/panels/accents only —
+-- never the words themselves (toggle labels, button text, category
+-- titles, etc.), so those two colors are pulled out once here instead of
+-- being defined per-theme.
+local NEUTRAL_TEXT     = Color3.fromRGB(235, 235, 240)
+local NEUTRAL_SUBTEXT  = Color3.fromRGB(150, 150, 165)
+
 local Themes = {
     Purple = {
         Background = Color3.fromRGB(18, 16, 24),
@@ -45,8 +53,8 @@ local Themes = {
         Header     = Color3.fromRGB(20, 18, 27),
         Accent     = Color3.fromRGB(168, 85, 247),
         AccentDim  = Color3.fromRGB(120, 60, 180),
-        Text       = Color3.fromRGB(235, 233, 240),
-        SubText    = Color3.fromRGB(150, 146, 165),
+        Text       = NEUTRAL_TEXT,
+        SubText    = NEUTRAL_SUBTEXT,
     },
     Crimson = {
         Background = Color3.fromRGB(20, 15, 16),
@@ -55,8 +63,8 @@ local Themes = {
         Header     = Color3.fromRGB(22, 16, 17),
         Accent     = Color3.fromRGB(239, 68, 68),
         AccentDim  = Color3.fromRGB(170, 50, 50),
-        Text       = Color3.fromRGB(240, 233, 233),
-        SubText    = Color3.fromRGB(165, 148, 148),
+        Text       = NEUTRAL_TEXT,
+        SubText    = NEUTRAL_SUBTEXT,
     },
     Ocean = {
         Background = Color3.fromRGB(13, 18, 24),
@@ -65,8 +73,8 @@ local Themes = {
         Header     = Color3.fromRGB(15, 20, 27),
         Accent     = Color3.fromRGB(56, 189, 248),
         AccentDim  = Color3.fromRGB(40, 130, 175),
-        Text       = Color3.fromRGB(230, 240, 245),
-        SubText    = Color3.fromRGB(140, 160, 175),
+        Text       = NEUTRAL_TEXT,
+        SubText    = NEUTRAL_SUBTEXT,
     },
     Emerald = {
         Background = Color3.fromRGB(14, 20, 17),
@@ -75,8 +83,8 @@ local Themes = {
         Header     = Color3.fromRGB(16, 22, 19),
         Accent     = Color3.fromRGB(52, 211, 153),
         AccentDim  = Color3.fromRGB(38, 150, 110),
-        Text       = Color3.fromRGB(230, 240, 235),
-        SubText    = Color3.fromRGB(142, 165, 155),
+        Text       = NEUTRAL_TEXT,
+        SubText    = NEUTRAL_SUBTEXT,
     },
     Amber = {
         Background = Color3.fromRGB(22, 18, 12),
@@ -85,8 +93,8 @@ local Themes = {
         Header     = Color3.fromRGB(24, 19, 13),
         Accent     = Color3.fromRGB(251, 146, 60),
         AccentDim  = Color3.fromRGB(180, 105, 45),
-        Text       = Color3.fromRGB(243, 236, 227),
-        SubText    = Color3.fromRGB(170, 155, 135),
+        Text       = NEUTRAL_TEXT,
+        SubText    = NEUTRAL_SUBTEXT,
     },
     Monochrome = {
         Background = Color3.fromRGB(17, 17, 17),
@@ -95,8 +103,8 @@ local Themes = {
         Header     = Color3.fromRGB(19, 19, 19),
         Accent     = Color3.fromRGB(220, 220, 220),
         AccentDim  = Color3.fromRGB(150, 150, 150),
-        Text       = Color3.fromRGB(235, 235, 235),
-        SubText    = Color3.fromRGB(150, 150, 150),
+        Text       = NEUTRAL_TEXT,
+        SubText    = NEUTRAL_SUBTEXT,
     },
     -- "Rainbow" is handled specially (see startRainbow/stopRainbow below) —
     -- this entry is just its resting/base palette before the cycle kicks in.
@@ -107,8 +115,8 @@ local Themes = {
         Header     = Color3.fromRGB(18, 18, 23),
         Accent     = Color3.fromRGB(255, 0, 0),
         AccentDim  = Color3.fromRGB(180, 0, 0),
-        Text       = Color3.fromRGB(235, 235, 240),
-        SubText    = Color3.fromRGB(150, 150, 160),
+        Text       = NEUTRAL_TEXT,
+        SubText    = NEUTRAL_SUBTEXT,
     },
 }
 
@@ -219,8 +227,25 @@ function Signal:Fire(...)
     end
 end
 
+-- Global animation speed (seconds) — this is the DEFAULT duration used by
+-- every Tween(...) call in the library that doesn't explicitly pass its
+-- own `dur`. The Settings tab's "Animation Speed" slider actually drives
+-- this value at runtime (see SettingsTab below) instead of just sitting
+-- there for show, so turning it down genuinely snaps every toggle/slider/
+-- dropdown/press-flash animation faster, and turning it up genuinely
+-- slows all of them down.
+local globalAnimSpeed = 0.15
+local function SetGlobalAnimSpeed(v) globalAnimSpeed = math.clamp(v, 0.02, 1) end
+local function GetGlobalAnimSpeed() return globalAnimSpeed end
+
+-- Same idea for the window's open/close fade (see api.Open/Close/Toggle
+-- near the bottom of Library.new) — the "Fade Time" slider drives this.
+local globalFadeTime = 0.2
+local function SetGlobalFadeTime(v) globalFadeTime = math.clamp(v, 0, 1.5) end
+local function GetGlobalFadeTime() return globalFadeTime end
+
 local function Tween(inst, props, dur, style, dir)
-    local tw = TweenService:Create(inst, TweenInfo.new(dur or 0.15, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
+    local tw = TweenService:Create(inst, TweenInfo.new(dur or globalAnimSpeed, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
     tw:Play()
     return tw
 end
@@ -280,6 +305,107 @@ local topZ = 10
 local function BringToFront(frame)
     topZ = topZ + 1
     frame.ZIndex = topZ
+end
+
+-- Press-flash: replaces the old hover-brighten behavior everywhere it was
+-- used. Instead of lighting up on MouseEnter/MouseLeave, a thin overlay
+-- sits centered on the button at zero width and, the instant the button
+-- is actually PRESSED (InputBegan — covers mouse AND touch, unlike
+-- MouseButton1Down), tweens out from that centerline to both edges at
+-- once while brightening, then shrinks back to the centerline and fades
+-- when released. Visually: a brightness bar growing from the middle
+-- outward to the sides, exactly on press/release, never on hover.
+local function AddPressFlash(btn, opts)
+    opts = opts or {}
+    local flashColor = opts.color or Theme.Accent
+    local pressedAlpha = opts.transparency or 0.55
+    local pressedTextColor = opts.pressedTextColor or Color3.new(1, 1, 1)
+
+    local overlay = Instance.new("Frame")
+    overlay.Name = "PressFlash"
+    overlay.AnchorPoint = Vector2.new(0.5, 0.5)
+    overlay.Position = UDim2.new(0.5, 0, 0.5, 0)
+    overlay.Size = UDim2.new(0, 0, 1, 0)
+    overlay.BackgroundColor3 = flashColor
+    overlay.BackgroundTransparency = 1
+    overlay.BorderSizePixel = 0
+    overlay.Parent = btn
+
+    -- match the button's own rounding so the flash never pokes out past
+    -- rounded corners
+    local existingCorner = btn:FindFirstChildOfClass("UICorner")
+    if existingCorner then
+        local overlayCorner = Instance.new("UICorner")
+        overlayCorner.CornerRadius = existingCorner.CornerRadius
+        overlayCorner.Parent = overlay
+    end
+
+    -- Tracks the color the text/element should relax back to on release.
+    -- Passed as a function (opts.getRestTextColor) when that color can
+    -- change over time (e.g. a dropdown option's selected state), or a
+    -- fixed color (opts.restTextColor) otherwise.
+    local function restTextColor()
+        if opts.getRestTextColor then return opts.getRestTextColor() end
+        return opts.restTextColor or Theme.SubText
+    end
+
+    local function setPressed(isPressed)
+        if isPressed then
+            Tween(overlay, { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = pressedAlpha }, 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            if opts.animateText ~= false and btn:IsA("TextButton") then
+                Tween(btn, { TextColor3 = pressedTextColor }, 0.1)
+            end
+        else
+            Tween(overlay, { Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1 }, 0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            if opts.animateText ~= false and btn:IsA("TextButton") then
+                Tween(btn, { TextColor3 = restTextColor() }, 0.2)
+            end
+        end
+    end
+
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            setPressed(true)
+        end
+    end)
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            setPressed(false)
+        end
+    end)
+
+    return overlay
+end
+
+-- Builds (or rebuilds) the content of a logo square: a custom image if
+-- one was provided, otherwise the first letter of the title. Used for
+-- both the header logo and the loading-screen logo, and re-usable at
+-- runtime by api.SetLogo so swapping the logo later doesn't require
+-- rebuilding the whole header.
+local function BuildLogoContent(container, logoValue, titleText, letterSize)
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("ImageLabel") or child:IsA("TextLabel") or child:IsA("UIPadding") then
+            child:Destroy()
+        end
+    end
+    if logoValue and logoValue ~= "" then
+        Pad(container, 4) -- small inset so custom images read as a clean badge, not edge-to-edge
+        local img = Instance.new("ImageLabel")
+        img.BackgroundTransparency = 1
+        img.Size = UDim2.new(1, 0, 1, 0)
+        img.Image = logoValue
+        img.ScaleType = Enum.ScaleType.Fit
+        img.Parent = container
+    else
+        local letter = Instance.new("TextLabel")
+        letter.BackgroundTransparency = 1
+        letter.Size = UDim2.new(1, 0, 1, 0)
+        letter.Font = Theme.FontBold
+        letter.TextSize = letterSize or 18
+        letter.TextColor3 = Color3.new(1, 1, 1)
+        letter.Text = (titleText or "S"):sub(1, 1):upper()
+        letter.Parent = container
+    end
 end
 
 -- UserInputService:GetMouseLocation() returns the RAW screen position
@@ -537,8 +663,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(btn, 6)
         Stroke(btn)
 
-        btn.MouseEnter:Connect(function() Tween(btn, { BackgroundColor3 = Theme.Accent, TextColor3 = Color3.new(1,1,1) }, 0.12) end)
-        btn.MouseLeave:Connect(function() Tween(btn, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.SubText }, 0.12) end)
+        AddPressFlash(btn, { restTextColor = Theme.SubText })
         btn.MouseButton1Click:Connect(function() api.Event:Fire() end)
 
         function api.SetText(t) btn.Text = t end
@@ -700,6 +825,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         bindBtn.Text = api.Value
         bindBtn.TextXAlignment = Enum.TextXAlignment.Right
         bindBtn.Parent = row
+        AddPressFlash(bindBtn, { restTextColor = Theme.SubText, transparency = 0.55 })
 
         local listening = false
         bindBtn.MouseButton1Click:Connect(function()
@@ -780,6 +906,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         Round(head, 6)
         Stroke(head)
         Pad(head, 10)
+        AddPressFlash(head, { restTextColor = Theme.Text })
 
         local chevron = Instance.new("TextLabel")
         chevron.BackgroundTransparency = 1
@@ -998,12 +1125,14 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
 
                 if isMultiSelect then
                     setOptionVisual(optBtn, selected[optionText])
-                    optBtn.MouseEnter:Connect(function()
-                        if not selected[optionText] then Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end
-                    end)
-                    optBtn.MouseLeave:Connect(function()
-                        if not selected[optionText] then Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end
-                    end)
+                    -- press-flash instead of hover; releases back to whatever
+                    -- text color this option's CURRENT selected state wants,
+                    -- not a fixed color, since selection can change on click
+                    AddPressFlash(optBtn, {
+                        getRestTextColor = function()
+                            return selected[optionText] and Color3.new(1, 1, 1) or Theme.SubText
+                        end,
+                    })
                     optBtn.MouseButton1Click:Connect(function()
                         selected[optionText] = (not selected[optionText]) or nil
                         setOptionVisual(optBtn, selected[optionText])
@@ -1013,8 +1142,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
                         -- is the whole point of multi-select
                     end)
                 else
-                    optBtn.MouseEnter:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.Accent }, 0.08) end)
-                    optBtn.MouseLeave:Connect(function() Tween(optBtn, { BackgroundColor3 = Theme.PanelLight }, 0.08) end)
+                    AddPressFlash(optBtn, { restTextColor = Theme.SubText })
                     optBtn.MouseButton1Click:Connect(function()
                         api.Set(optionText)
                         close()
@@ -1347,12 +1475,18 @@ function Library.new(options)
         return names
     end
 
-    -- outer glow wrapper
-    local glow = Instance.new("Frame")
+    -- outer glow wrapper — a CanvasGroup (not a plain Frame) specifically
+    -- so the whole window can be faded in/out as ONE unit via its single
+    -- GroupTransparency property (see api.Open/Close/Toggle near the
+    -- bottom), which is what actually makes the Settings tab's "Fade
+    -- Time" slider do something instead of sitting there unused.
+    local glow = Instance.new("CanvasGroup")
     glow.BackgroundTransparency = 1
+    glow.GroupTransparency = 0
     glow.Size = UDim2.new(0, sizeX, 0, sizeY)
     glow.Position = options.position or UDim2.new(0.5, -sizeX / 2, 0.5, -sizeY / 2)
     glow.Parent = ScreenGui
+    local windowVisible = true
 
     local window = Instance.new("Frame")
     window.Active = true
@@ -1384,16 +1518,10 @@ function Library.new(options)
         loadingLogo.ZIndex = 51
         loadingLogo.Parent = loadingScreen
         Round(loadingLogo, 14)
-
-        local loadingLetter = Instance.new("TextLabel")
-        loadingLetter.BackgroundTransparency = 1
-        loadingLetter.Size = UDim2.new(1, 0, 1, 0)
-        loadingLetter.Font = Theme.FontBold
-        loadingLetter.TextSize = 26
-        loadingLetter.TextColor3 = Color3.new(1, 1, 1)
-        loadingLetter.Text = (options.title or "S"):sub(1, 1):upper()
-        loadingLetter.ZIndex = 51
-        loadingLetter.Parent = loadingLogo
+        BuildLogoContent(loadingLogo, options.logo, options.title, 26)
+        for _, child in ipairs(loadingLogo:GetChildren()) do
+            if child:IsA("GuiObject") then child.ZIndex = 51 end
+        end
 
         local loadingText = Instance.new("TextLabel")
         loadingText.AnchorPoint = Vector2.new(0.5, 0)
@@ -1432,6 +1560,7 @@ function Library.new(options)
             for _, d in ipairs(loadingScreen:GetDescendants()) do
                 if d:IsA("TextLabel") then Tween(d, { TextTransparency = 1 }, 0.3) end
                 if d:IsA("Frame") then Tween(d, { BackgroundTransparency = 1 }, 0.3) end
+                if d:IsA("ImageLabel") then Tween(d, { ImageTransparency = 1 }, 0.3) end
             end
             task.wait(0.3)
             loadingScreen:Destroy()
@@ -1450,21 +1579,19 @@ function Library.new(options)
     header.Size = UDim2.new(1, 0, 0, 68)
     header.Parent = window
 
+    -- Logo: shows a custom image if options.logo is set (an rbxassetid://
+    -- string, or a numeric asset id — either works, see BuildLogoContent),
+    -- otherwise falls back to the first letter of the title, same as
+    -- before. Changeable at runtime with window.SetLogo(...).
+    local currentLogo = options.logo
+
     local logo = Instance.new("Frame")
     logo.Position = UDim2.new(0, 16, 0.5, -18)
     logo.Size = UDim2.new(0, 36, 0, 36)
     logo.BackgroundColor3 = Theme.Accent
     logo.Parent = header
     Round(logo, 8)
-
-    local logoLetter = Instance.new("TextLabel")
-    logoLetter.BackgroundTransparency = 1
-    logoLetter.Size = UDim2.new(1, 0, 1, 0)
-    logoLetter.Font = Theme.FontBold
-    logoLetter.TextSize = 18
-    logoLetter.TextColor3 = Color3.new(1, 1, 1)
-    logoLetter.Text = (options.title or "S"):sub(1, 1):upper()
-    logoLetter.Parent = logo
+    BuildLogoContent(logo, currentLogo, options.title, 18)
 
     local titleLabel = Instance.new("TextLabel")
     titleLabel.BackgroundTransparency = 1
@@ -1771,8 +1898,42 @@ function Library.new(options)
         local settingsCat = tab.new({ text = "Settings" })
         local keybind = settingsCat.Keybind({ text = "Menu Keybind", default = opts.keybind or "RightControl" })
         local unloadBtn = settingsCat.Button({ text = "Unload" })
-        local fadeSlider = settingsCat.Slider({ text = "Fade Time", min = 0, max = 100, default = (opts.fadeTime or 0.2) * 100, suffix = "s" })
-        local animSlider = settingsCat.Slider({ text = "Animation Speed", min = 0, max = 100, default = (opts.animationSpeed or 0.25) * 100, suffix = "s" })
+        -- Both sliders show 0-100%, mapped onto a 0-1 second real range —
+        -- e.g. 20% = 0.2s. They're fully wired: dragging them immediately
+        -- changes how long the window's open/close fade takes, and how
+        -- long every other animation in the library takes (toggles,
+        -- sliders, dropdowns, press-flashes, category expand/collapse),
+        -- not just cosmetic sliders that print a number nobody uses.
+        local FADE_RANGE_SECONDS = 1
+        local ANIM_RANGE_SECONDS = 1
+        -- NOTE: these deliberately do NOT use Slider's own opts.flag — a
+        -- config LOAD sets a flagged element silently (no .Event fire, by
+        -- design, so loading a config doesn't spam your game logic), but
+        -- these two sliders need the underlying global applied even on a
+        -- silent load, so they're registered by hand exactly like the
+        -- Theme dropdown above.
+        local fadeSlider = settingsCat.Slider({
+            text = "Fade Time", min = 0, max = 100,
+            default = math.clamp(math.floor((opts.fadeTime or 0.2) / FADE_RANGE_SECONDS * 100 + 0.5), 0, 100),
+            suffix = "%",
+        })
+        local animSlider = settingsCat.Slider({
+            text = "Animation Speed", min = 0, max = 100,
+            default = math.clamp(math.floor((opts.animationSpeed or 0.25) / ANIM_RANGE_SECONDS * 100 + 0.5), 0, 100),
+            suffix = "%",
+        })
+        SetGlobalFadeTime(fadeSlider.Value / 100 * FADE_RANGE_SECONDS)
+        SetGlobalAnimSpeed(animSlider.Value / 100 * ANIM_RANGE_SECONDS)
+        fadeSlider.Event:Connect(function(value) SetGlobalFadeTime(value / 100 * FADE_RANGE_SECONDS) end)
+        animSlider.Event:Connect(function(value) SetGlobalAnimSpeed(value / 100 * ANIM_RANGE_SECONDS) end)
+        registerFlag("FadeTime", function() return fadeSlider.Value end, function(v)
+            fadeSlider.Set(v, true)
+            SetGlobalFadeTime(v / 100 * FADE_RANGE_SECONDS)
+        end)
+        registerFlag("AnimationSpeed", function() return animSlider.Value end, function(v)
+            animSlider.Set(v, true)
+            SetGlobalAnimSpeed(v / 100 * ANIM_RANGE_SECONDS)
+        end)
         local notifPosDropdown = settingsCat.Dropdown({
             text = "Notification Position",
             options = { "TopRight", "TopLeft" },
@@ -1908,10 +2069,39 @@ function Library.new(options)
         if ok and code then menuKeyCode = code end
     end
 
-    function api.Open() glow.Visible = true end
-    function api.Close() glow.Visible = false end
-    function api.Toggle() glow.Visible = not glow.Visible end
+    -- Open/Close/Toggle fade the whole window in/out over GetGlobalFadeTime()
+    -- seconds (live-controlled by the Settings tab's "Fade Time" slider,
+    -- see SettingsTab above) instead of just snapping Visible on/off.
+    function api.Open()
+        if windowVisible then return end
+        windowVisible = true
+        glow.Visible = true
+        glow.GroupTransparency = 1
+        Tween(glow, { GroupTransparency = 0 }, GetGlobalFadeTime(), Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    end
+    function api.Close()
+        if not windowVisible then return end
+        windowVisible = false
+        local tw = Tween(glow, { GroupTransparency = 1 }, GetGlobalFadeTime(), Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local conn
+        conn = tw.Completed:Connect(function()
+            if not windowVisible and glow.Parent then glow.Visible = false end
+            conn:Disconnect()
+        end)
+    end
+    function api.Toggle()
+        if windowVisible then api.Close() else api.Open() end
+    end
     function api.SetPosition(pos) glow.Position = pos end
+
+    -- Swap the header logo for a custom image at any time — pass an
+    -- rbxassetid:// string (or nil/"" to go back to the letter badge).
+    function api.SetLogo(logoValue)
+        currentLogo = logoValue
+        BuildLogoContent(logo, currentLogo, options.title, 18)
+    end
+    function api.GetLogo() return currentLogo end
+
     function api.Destroy()
         stopRainbow()
         glow:Destroy()
