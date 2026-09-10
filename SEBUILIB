@@ -291,7 +291,7 @@ local function NewElementFactory(container, onSizeChanged, registerFlag)
         check.Font = Theme.FontBold
         check.TextSize = 12
         check.TextColor3 = Theme.Accent
-        check.Text = "check"
+        check.Text = "✓"
         check.TextTransparency = api.Value and 0 or 1
         check.Parent = box
 
@@ -1371,7 +1371,7 @@ function Library.new(options)
         btn.Font = Theme.FontBold
         btn.TextSize = 16
         btn.TextColor3 = Theme.SubText
-        btn.Text = opts.wide and ((opts.icon and (opts.icon .. "  ") or "") .. (opts.name or "Tab")) or (opts.icon or "*")
+        btn.Text = opts.wide and ((opts.icon and (opts.icon .. "  ") or "") .. (opts.name or "Tab")) or (opts.icon or "•")
         btn.Parent = tabBar
         Round(btn, 10)
 
@@ -1387,7 +1387,7 @@ function Library.new(options)
     end
 
     function api.new(catOptions)
-        if not tabs[1] then api.Tab({ icon = "=" }) end
+        if not tabs[1] then api.Tab({ icon = "•" }) end
         return tabs[1].pageApi.new(catOptions)
     end
 
@@ -1522,7 +1522,7 @@ function Library.new(options)
 
     function api.SettingsTab(opts)
         opts = opts or {}
-        local tab = api.Tab({ name = opts.name or "Settings", icon = opts.icon or "gear" })
+        local tab = api.Tab({ name = opts.name or "Settings", icon = opts.icon or "⚙" })
 
         local settingsCat = tab.new({ text = "Settings" })
         local keybind = settingsCat.Keybind({ text = "Menu Keybind", default = opts.keybind or "RightControl" })
