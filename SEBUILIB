@@ -293,7 +293,12 @@ local function MakeDraggable(frame, handle)
             end)
         end
     end)
-    handle.InputChanged:Connect(function(input)
+    -- Listen on UserInputService (whole screen) instead of the handle itself.
+    -- Binding this to `handle.InputChanged` only fires while the cursor is
+    -- still physically over the header, so a fast drag that slips past its
+    -- edges stops updating and the window gets stranded instead of
+    -- following the cursor to other parts of the screen.
+    UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
