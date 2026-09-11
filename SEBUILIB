@@ -1674,7 +1674,14 @@ function Library.new(options)
     end
     task.spawn(setAvatar)
 
-    MakeDraggable(window, header)
+    -- Drag the OUTER glow container, not the inner `window` frame. `glow`
+    -- is a CanvasGroup (needed for the fade in/out effect) and CanvasGroups
+    -- always clip their contents to their own bounds. `window` fills 100%
+    -- of `glow`, so dragging `window` only shuffled content around inside
+    -- glow's fixed, centered bounding box — anything sliding past its edge
+    -- got clipped and vanished, while the box itself never left the center
+    -- of the screen. Dragging `glow` moves the actual visible box.
+    MakeDraggable(glow, header)
     window.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             BringToFront(glow)
