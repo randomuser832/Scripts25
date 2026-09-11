@@ -301,7 +301,24 @@ local function MakeDraggable(frame, handle)
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            local newX = startPos.X.Offset + delta.X
+            local newY = startPos.Y.Offset + delta.Y
+
+            -- Keep the frame fully on screen: convert the tentative position
+            -- to absolute pixels, clamp those to the screen's bounds, then
+            -- convert back. Without this, nothing stops the drag from
+            -- pushing the window partway (or all the way) past the edge of
+            -- the screen, where it just runs off and disappears.
+            local screenSize = ScreenGui.AbsoluteSize
+            local frameSize = frame.AbsoluteSize
+            local absX = screenSize.X * startPos.X.Scale + newX
+            local absY = screenSize.Y * startPos.Y.Scale + newY
+            absX = math.clamp(absX, 0, math.max(0, screenSize.X - frameSize.X))
+            absY = math.clamp(absY, 0, math.max(0, screenSize.Y - frameSize.Y))
+            newX = absX - screenSize.X * startPos.X.Scale
+            newY = absY - screenSize.Y * startPos.Y.Scale
+
+            frame.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
         end
     end)
 end
